@@ -1,0 +1,171 @@
+# RRG-SCM — Supply Chain Analytics Platform
+
+A Python + React application for **SCM analytics, material planning, sourcing,
+costing and finished-goods planning**. Users upload their daily dumps — stocks,
+open POs, receipts, warehouse stock, BOMs, demand — from **Excel, CSV, SQL
+Server, MySQL / MySQL Workbench, PostgreSQL, MS Access or generic ODBC**, and the
+app does the analysis.
+
+> **Status:** Foundation + the **Incoming Materials Analysis** module built
+> end-to-end. Material Planning (MRP), Sourcing, Costing, FG Planning and the
+> Overall SCM dashboard are implemented and wired through the API and UI, ready
+> to extend.
+
+---
+
+## Architecture
+
+```
+RRG-SCM/
+├── backend/                 FastAPI + SQLAlchemy + pandas
+│   ├── app/
+│   │   ├── connectors/      Data-source connectors (file + databases)
+│   │   ├── ingestion/       Dump-type schemas, column mapping, loader
+│   │   ├── models/          ORM data model (staging store)
+│   │   ├── analytics/       Analysis modules (incoming, MRP, sourcing, …)
+│   │   ├── api/             REST endpoints
+│   │   ├── config.py        Settings (.env)
+│   │   ├── database.py      App database (SQLite by default)
+│   │   └── main.py          FastAPI app
+│   ├── sample_data/         Generated sample dumps (CSV)
+│   ├── scripts/seed.py      Generate + load sample data
+│   └── tests/               pytest suite
+└── frontend/                React (Vite) SPA
+    └── src/
+        ├── api/             Fetch client
+        ├── components/      Layout + shared UI (cards, tables, charts)
+        └── pages/           Dashboard, Incoming, Planning, Sourcing, …
+```
+
+**Data flow:** external source → *connector* → pandas DataFrame → *mapper*
+(flexible column matching + type coercion + validation) → *loader* → app
+database (staging) → *analytics module* → JSON API → React UI.
+
+The app's own store defaults to a local **SQLite** file; point `APP_DATABASE_URL`
+at PostgreSQL for a shared deployment. External databases are treated as *sources*
+to pull from, not as the app store.
+
+---
+
+## Quick start
+
+### 1. Backend
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+# Generate + load sample data (optional but recommended for a first look)
+python -m scripts.seed
+
+# Run the API (http://localhost:8000, docs at /docs)
+uvicorn app.main:app --reload
+```
+
+### 2. Frontend
+
+```bash
+cd frontend
+npm install
+npm run dev                         # http://localhost:5173
+```
+
+The Vite dev server proxies `/api` to the backend on `:8000`, so just open
+<http://localhost:5173>.
+
+---
+
+## Data ingestion
+
+Everything is driven by **dump types** (see `backend/app/ingestion/dump_types.py`):
+
+| Dump type          | What it is                              | Required columns              |
+|--------------------|-----------------------------------------|-------------------------------|
+| `materials`        | Item master + planning parameters       | `material_code`               |
+| `suppliers`        | Vendor master                           | `supplier_code`               |
+| `stock`            | On-hand stock snapshot                   | `material_code`, `qty_on_hand`|
+| `warehouse_stock`  | Stock by warehouse/location             | `warehouse_code`, `material_code`, `qty` |
+| `open_pos`         | Open purchase-order lines (incoming)    | `po_number`, `material_code`  |
+| `receipts`         | Goods receipts (GRN)                     | `material_code`, `qty`        |
+| `demand`           | Forecast / requirements                  | `material_code`, `qty`        |
+| `bom`              | Bill of materials                        | `parent_material`, `component_material` |
+| `production_plan`  | Planned FG production                     | `material_code`, `planned_qty`|
+
+**Flexible column mapping:** headers are matched case-insensitively with common
+aliases and separators normalised, so `PO No`, `Material`, `Vendor`, `ETA` map to
+`po_number`, `material_code`, `supplier_code`, `expected_date` automatically. Use
+the **Preview** action in the UI to see the mapping before loading, or pass
+`column_overrides` to the API.
+
+### Ingestion API
+
+| Endpoint                     | Purpose                                    |
+|------------------------------|--------------------------------------------|
+| `POST /api/ingest/file/preview` | Preview a file's column mapping          |
+| `POST /api/ingest/file`         | Upload an Excel/CSV file and load it     |
+| `POST /api/ingest/db/test`      | Test a database connection               |
+| `POST /api/ingest/db/preview`   | Preview a query/table from a database    |
+| `POST /api/ingest/db`           | Pull from a database and load it         |
+| `GET  /api/ingest/log`          | Recent ingestion history                 |
+
+### Database drivers (optional)
+
+Drivers are imported lazily — the app runs without them and only errors if you
+use that source. Install what you need:
+
+```bash
+pip install psycopg2-binary   # PostgreSQL
+pip install PyMySQL           # MySQL / MySQL Workbench
+pip install pyodbc            # SQL Server, MS Access, generic ODBC
+```
+
+---
+
+## Analytics modules
+
+| Module               | Endpoint                     | Highlights |
+|----------------------|------------------------------|------------|
+| **Incoming Materials** *(full)* | `GET /api/analytics/incoming` | Open-PO pipeline, arrivals timeline, overdue/delay analysis, supplier & category breakdown, ABC of incoming, incoming-vs-stock coverage |
+| Material Planning (MRP) | `GET /api/analytics/planning` | Net requirements, shortages/excess, reorder alerts, suggested orders (MOQ-aware), coverage days |
+| Sourcing             | `GET /api/analytics/sourcing` | Supplier spend, on-time (OTIF) performance, price benchmarking, single-source risk |
+| Costing              | `GET /api/analytics/costing`  | Multi-level BOM cost roll-up vs standard cost |
+| FG Planning          | `GET /api/analytics/fg-planning` | Production plan exploded through BOM, component availability, feasibility |
+| Overall SCM          | `GET /api/analytics/overview` | Cross-module executive dashboard + data freshness |
+
+All accept an optional `as_of=YYYY-MM-DD` query parameter.
+
+---
+
+## Testing
+
+```bash
+cd backend
+source .venv/bin/activate
+pytest
+```
+
+The suite covers column-alias mapping, type coercion/validation, and the
+ingestion → analytics flow end-to-end against an in-memory database.
+
+---
+
+## Configuration
+
+Copy `backend/.env.example` to `backend/.env` to override defaults
+(`APP_DATABASE_URL`, `CORS_ORIGINS`, `UPLOAD_DIR`, `DEFAULT_AS_OF_DATE`), and
+`frontend/.env.example` to `frontend/.env` to set `VITE_API_BASE` for a
+separately hosted API.
+
+---
+
+## Roadmap
+
+- Deepen MRP: time-phased/bucketed netting, planned-order firming, pegging.
+- Sourcing: award scenarios, savings tracking, supplier scorecards.
+- Costing: labour/overhead components, landed cost, currency conversion.
+- FG Planning: capacity constraints, ATP/CTP, multi-period scheduling.
+- Multi-user auth, saved DB connection profiles, scheduled auto-refresh.
+- Excel/PDF export of every analysis view.
+```

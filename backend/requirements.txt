@@ -1,0 +1,30 @@
+# --- Core web framework ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pydantic==2.10.5
+pydantic-settings==2.7.1
+
+# --- Data / analytics ---
+pandas==2.2.3
+numpy==2.2.1
+python-dateutil==2.9.0.post0
+
+# --- ORM / app database ---
+SQLAlchemy==2.0.36
+
+# --- File formats ---
+openpyxl==3.1.5          # .xlsx read/write
+xlrd==2.0.1              # legacy .xls (optional)
+
+# --- Optional external DB drivers (install as needed for your sources) ---
+# Uncomment the drivers you use. The app imports them lazily, so it runs
+# fine without them; a connector only fails if you actually try to use it.
+#
+# psycopg2-binary==2.9.10   # PostgreSQL
+# PyMySQL==1.1.1            # MySQL / MySQL Workbench
+# pyodbc==5.2.0             # SQL Server, MS Access, generic ODBC
+
+# --- Testing ---
+pytest==8.3.4
+httpx==0.28.1

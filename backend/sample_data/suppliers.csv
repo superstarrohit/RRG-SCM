@@ -1,0 +1,5 @@
+supplier_code,name,country,lead_time_days,rating
+SUP-001,Apex Metals Ltd,USA,21,88
+SUP-002,Global Components Co,Germany,30,76
+SUP-003,Eastern Polymers,India,14,92
+SUP-004,Precision Parts Inc,Japan,45,81
