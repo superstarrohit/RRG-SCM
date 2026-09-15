@@ -43,6 +43,10 @@ export function postForm(path, formData) {
   );
 }
 
+export function del(path) {
+  return fetch(`${BASE}/api${path}`, { method: "DELETE" }).then(handle);
+}
+
 // ---- typed helpers ----
 export const api = {
   health: () => get("/health"),
@@ -60,4 +64,14 @@ export const api = {
   ingestDb: (cfg) => postJSON("/ingest/db", cfg),
   uploadFile: (formData) => postForm("/ingest/file", formData),
   previewFile: (formData) => postForm("/ingest/file/preview", formData),
+
+  // ---- Data workspace ----
+  datasets: () => get("/data/datasets"),
+  rows: (ds, p) => get(`/data/${ds}/rows`, p),
+  profile: (ds) => get(`/data/${ds}/profile`),
+  truncate: (ds) => del(`/data/${ds}`),
+  deleteRows: (ds, ids) => postJSON(`/data/${ds}/delete-rows`, { ids }),
+  updateRow: (ds, row_id, values) => postJSON(`/data/${ds}/update-row`, { row_id, values }),
+  join: (body) => postJSON("/data/join", body),
+  exportUrl: (ds, format) => `${BASE}/api/data/${ds}/export?format=${format}`,
 };

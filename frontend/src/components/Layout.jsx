@@ -9,7 +9,7 @@ const TABS = [
   { to: "/sourcing", label: "Sourcing", icon: "handshake" },
   { to: "/costing", label: "Costing", icon: "dollar" },
   { to: "/fg-planning", label: "FG Planning", icon: "factory" },
-  { to: "/ingest", label: "Data", icon: "layers" },
+  { to: "/data", label: "Data", icon: "database" },
 ];
 
 export default function Layout({ children }) {

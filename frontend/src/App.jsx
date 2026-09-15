@@ -7,7 +7,7 @@ import Planning from "./pages/Planning.jsx";
 import Sourcing from "./pages/Sourcing.jsx";
 import Costing from "./pages/Costing.jsx";
 import FGPlanning from "./pages/FGPlanning.jsx";
-import Ingest from "./pages/Ingest.jsx";
+import DataWorkspace from "./pages/DataWorkspace.jsx";
 
 export default function App() {
   return (
@@ -19,7 +19,8 @@ export default function App() {
         <Route path="/sourcing" element={<Sourcing />} />
         <Route path="/costing" element={<Costing />} />
         <Route path="/fg-planning" element={<FGPlanning />} />
-        <Route path="/ingest" element={<Ingest />} />
+        <Route path="/data" element={<DataWorkspace />} />
+        <Route path="/ingest" element={<DataWorkspace />} />
         <Route path="*" element={<Dashboard />} />
       </Routes>
     </Layout>

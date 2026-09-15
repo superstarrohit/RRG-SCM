@@ -71,13 +71,15 @@ async def ingest_file(
     dump_type: str = Form(...),
     mode: str = Form("replace"),
     sheet_name: str | None = Form(None),
+    merge_keys: str | None = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Upload an Excel/CSV file and load it into the app database."""
+    """Upload an Excel/CSV/JSON file and load it into the app database."""
     if dump_type not in DUMP_TYPES:
         raise HTTPException(400, f"Unknown dump type '{dump_type}'.")
     content = await file.read()
+    keys = [k.strip() for k in merge_keys.split(",")] if merge_keys else None
     try:
         df = FileConnector(
             content=content,
@@ -87,6 +89,7 @@ async def ingest_file(
         report = load_dataframe(
             db, df, dump_type,
             source_type="file", source_name=file.filename or "upload", mode=mode,
+            merge_keys=keys,
         )
     except ConnectorError as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -136,6 +139,7 @@ def ingest_db(req: DBIngestRequest, db: Session = Depends(get_db)) -> dict:
             source_name=req.table or (req.query or "")[:200],
             mode=req.mode,
             overrides=req.column_overrides,
+            merge_keys=req.merge_keys,
         )
     except ConnectorError as exc:
         raise HTTPException(400, str(exc)) from exc

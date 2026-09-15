@@ -54,10 +54,12 @@ class FileConnector(Connector):
             elif suffix in {".csv", ".txt", ".tsv"}:
                 sep = self.delimiter or ("\t" if suffix == ".tsv" else ",")
                 df = pd.read_csv(self._buffer(), sep=sep)
+            elif suffix == ".json":
+                df = self._read_json()
             else:
                 raise ConnectorError(
                     f"Unsupported file type '{suffix}'. "
-                    "Use .xlsx, .xls, .csv, .tsv or .txt."
+                    "Use .xlsx, .xls, .csv, .tsv, .txt or .json."
                 )
         except ConnectorError:
             raise
@@ -68,3 +70,26 @@ class FileConnector(Connector):
         if isinstance(df, dict):
             df = next(iter(df.values()))
         return df
+
+    def _read_json(self) -> pd.DataFrame:
+        """Read JSON that is either a top-level array of records, or an object
+        wrapping the records under a common key (data/records/rows/items/results).
+        """
+        import json
+
+        buf = self._buffer()
+        raw = buf.read() if hasattr(buf, "read") else Path(buf).read_bytes()
+        payload = json.loads(raw)
+        if isinstance(payload, list):
+            records = payload
+        elif isinstance(payload, dict):
+            for key in ("data", "records", "rows", "items", "results"):
+                if isinstance(payload.get(key), list):
+                    records = payload[key]
+                    break
+            else:
+                # single object -> one row
+                records = [payload]
+        else:
+            raise ConnectorError("JSON must be an array of objects or an object of records.")
+        return pd.json_normalize(records)

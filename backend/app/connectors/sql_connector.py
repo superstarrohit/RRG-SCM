@@ -21,6 +21,8 @@ DB_SOURCE_TYPES: dict[str, dict[str, str]] = {
     "postgres": {"label": "PostgreSQL", "driver": "psycopg2-binary"},
     "access": {"label": "Microsoft Access", "driver": "pyodbc"},
     "odbc": {"label": "Generic ODBC (DSN)", "driver": "pyodbc"},
+    "sap_hana": {"label": "SAP HANA", "driver": "sqlalchemy-hana hdbcli"},
+    "sap_odbc": {"label": "SAP (ERP/BW via ODBC/DSN)", "driver": "pyodbc"},
 }
 
 
@@ -76,6 +78,21 @@ def build_url(cfg: DBConnectionConfig) -> str:
         )
         return f"access+pyodbc:///?odbc_connect={conn}"
 
+    if st == "sap_hana":
+        # SAP HANA via the sqlalchemy-hana dialect (needs the hdbcli driver).
+        port = cfg.port or 30015
+        return f"hana://{auth}{cfg.host}:{port}"
+
+    if st == "sap_odbc":
+        # SAP ERP/BW is typically reached through an ODBC DSN (e.g. an SAP HANA
+        # or Connector/ODBC DSN configured on the host).
+        if not cfg.dsn:
+            raise ConnectorError("SAP (ODBC) source requires a configured 'dsn'.")
+        conn = quote_plus(
+            f"DSN={cfg.dsn};UID={cfg.username or ''};PWD={cfg.password or ''};"
+        )
+        return f"mssql+pyodbc:///?odbc_connect={conn}"
+
     if st == "odbc":
         if cfg.dsn:
             conn = quote_plus(f"DSN={cfg.dsn};UID={cfg.username or ''};PWD={cfg.password or ''}")
@@ -123,8 +140,8 @@ class SQLConnector(Connector):
         table = self.table or ""
         if not all(c.isalnum() or c in "_.[]\"" for c in table):
             raise ConnectorError(f"Invalid table name '{table}'.")
-        top = f"TOP {int(self.limit)} " if self.limit and self.source_type in {"sqlserver", "access", "odbc"} else ""
-        tail = f" LIMIT {int(self.limit)}" if self.limit and self.source_type in {"postgres", "mysql"} else ""
+        top = f"TOP {int(self.limit)} " if self.limit and self.source_type in {"sqlserver", "access", "odbc", "sap_odbc"} else ""
+        tail = f" LIMIT {int(self.limit)}" if self.limit and self.source_type in {"postgres", "mysql", "sap_hana"} else ""
         return f"SELECT {top}* FROM {table}{tail}"
 
     def test_connection(self) -> None:

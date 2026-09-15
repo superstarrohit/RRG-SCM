@@ -10,7 +10,7 @@ from app.connectors.sql_connector import (
 
 #: All source types the app advertises to the UI.
 SOURCE_TYPES: dict[str, str] = {
-    "file": "Excel / CSV file upload",
+    "file": "Excel / CSV / JSON file upload",
     **{k: v["label"] for k, v in DB_SOURCE_TYPES.items()},
 }
 

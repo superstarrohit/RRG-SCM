@@ -24,8 +24,11 @@ class DBPreviewRequest(DBConnectionRequest):
 
 class DBIngestRequest(DBPreviewRequest):
     dump_type: str = Field(..., description="Target dump type key, e.g. 'open_pos'")
-    mode: str = Field("replace", description="replace | append")
+    mode: str = Field("replace", description="replace | append | merge")
     column_overrides: dict[str, str] | None = Field(
         default=None,
         description="Force mapping: {canonical_field: source_column}",
+    )
+    merge_keys: list[str] | None = Field(
+        default=None, description="Key columns for mode='merge' (upsert)."
     )

@@ -104,22 +104,45 @@ the **Preview** action in the UI to see the mapping before loading, or pass
 | Endpoint                     | Purpose                                    |
 |------------------------------|--------------------------------------------|
 | `POST /api/ingest/file/preview` | Preview a file's column mapping          |
-| `POST /api/ingest/file`         | Upload an Excel/CSV file and load it     |
+| `POST /api/ingest/file`         | Upload an Excel/CSV/JSON file and load it (replace/append/merge) |
 | `POST /api/ingest/db/test`      | Test a database connection               |
 | `POST /api/ingest/db/preview`   | Preview a query/table from a database    |
 | `POST /api/ingest/db`           | Pull from a database and load it         |
 | `GET  /api/ingest/log`          | Recent ingestion history                 |
 
-### Database drivers (optional)
+### Data Workspace API
 
-Drivers are imported lazily — the app runs without them and only errors if you
-use that source. Install what you need:
+A full data-management surface over the staged datasets (the **Data** tab):
+
+| Endpoint                              | Purpose                                     |
+|---------------------------------------|---------------------------------------------|
+| `GET  /api/data/datasets`             | List datasets with row counts + columns     |
+| `GET  /api/data/{ds}/rows`            | Paginated, searchable, sortable rows        |
+| `POST /api/data/{ds}/update-row`      | Inline-edit a row's editable fields         |
+| `POST /api/data/{ds}/delete-rows`     | Delete selected rows by id                  |
+| `DELETE /api/data/{ds}`               | Clear all rows in a dataset                 |
+| `POST /api/data/join`                 | Column→column link (join) two datasets      |
+| `GET  /api/data/{ds}/profile`         | Data-quality / modeling report              |
+| `GET  /api/data/{ds}/export`          | Export as `csv` \| `json` \| `xlsx`         |
+
+Load modes on import: **replace** (overwrite), **append** (add), **merge**
+(upsert on key columns). Merge and delete let you reconcile daily dumps in place.
+
+### Connectors & drivers (optional)
+
+Import from files (**Excel, CSV, TSV, JSON**) or live databases. DB drivers are
+imported lazily — the app runs without them and only errors if you use that
+source. Install what you need:
 
 ```bash
 pip install psycopg2-binary   # PostgreSQL
 pip install PyMySQL           # MySQL / MySQL Workbench
-pip install pyodbc            # SQL Server, MS Access, generic ODBC
+pip install pyodbc            # SQL Server, MS Access, generic ODBC, SAP (ODBC)
+pip install sqlalchemy-hana hdbcli   # SAP HANA
 ```
+
+Supported source types: `file`, `sqlserver`, `mysql`, `postgres`, `access`,
+`odbc`, `sap_hana`, `sap_odbc`.
 
 ---
 
