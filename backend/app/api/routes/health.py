@@ -1,10 +1,11 @@
 """Health & metadata endpoints."""
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app import __version__
 from app.connectors import SOURCE_TYPES
+from app.database import get_db
 from app.ingestion.dump_types import DUMP_TYPES
 
 router = APIRouter(tags=["meta"])
@@ -43,3 +44,10 @@ def dump_types() -> list[dict]:
 def source_types() -> list[dict]:
     """List the data-source types the app can ingest from."""
     return [{"key": k, "label": v} for k, v in SOURCE_TYPES.items()]
+
+
+@router.get("/meta/slicers")
+def slicers(db=Depends(get_db)) -> dict:
+    """Global slicer options (commodity, buyer) drawn from the material master."""
+    from app.analytics.common import load_df, filter_options
+    return filter_options(load_df(db, "materials"))

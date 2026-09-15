@@ -12,11 +12,13 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from app.analytics.common import abc_classify, load_df, safe_round, today
+from app.analytics.common import (
+    abc_classify, allowed_codes, filter_codes, load_df, safe_round, today,
+)
 from sqlalchemy.orm import Session
 
 
-def _prepare(db: Session, as_of: date | None) -> tuple[pd.DataFrame, pd.Timestamp]:
+def _prepare(db, as_of, commodity=None, buyer=None):
     pos = load_df(db, "open_pos")
     now = today(as_of)
     if pos.empty:
@@ -24,6 +26,9 @@ def _prepare(db: Session, as_of: date | None) -> tuple[pd.DataFrame, pd.Timestam
 
     materials = load_df(db, "materials")
     suppliers = load_df(db, "suppliers")
+    pos = filter_codes(pos, allowed_codes(materials, commodity, buyer))
+    if pos.empty:
+        return pos, now
 
     pos["order_qty"] = pd.to_numeric(pos["order_qty"], errors="coerce").fillna(0.0)
     pos["received_qty"] = pd.to_numeric(pos["received_qty"], errors="coerce").fillna(0.0)
@@ -93,14 +98,19 @@ def analyze(
     as_of: date | None = None,
     horizon_weeks: int = 8,
     top_n: int = 15,
+    commodity: str | None = None,
+    buyer: str | None = None,
 ) -> dict:
-    pos, now = _prepare(db, as_of)
+    from app.analytics.common import filter_options
+    opts = filter_options(load_df(db, "materials"), commodity, buyer)
+    pos, now = _prepare(db, as_of, commodity, buyer)
 
     if pos.empty:
         return {
             "as_of": (as_of or date.today()).isoformat(),
             "empty": True,
-            "message": "No open purchase orders loaded. Upload the 'Open Purchase Orders' dump.",
+            "message": "No open purchase orders loaded (or none match the filters). Upload the 'Open Purchase Orders' dump.",
+            "filters": opts,
             "kpis": _empty_kpis(),
             "status_breakdown": [],
             "arrival_timeline": [],
@@ -115,6 +125,7 @@ def analyze(
     return {
         "as_of": (as_of or date.today()).isoformat(),
         "empty": False,
+        "filters": opts,
         "kpis": kpis,
         "status_breakdown": _status_breakdown(pos),
         "arrival_timeline": _arrival_timeline(pos, now, horizon_weeks),

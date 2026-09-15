@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from app.models import (
     BOMLine,
     Demand,
+    Forecast,
     InventorySnapshot,
     Material,
     Movement,
@@ -149,6 +150,18 @@ DUMP_TYPES: dict[str, DumpType] = {
             FieldSpec("period", ("date", "month", "week", "bucket"), dtype="date"),
             FieldSpec("qty", ("quantity", "demand", "requirement"), dtype="float", required=True),
             FieldSpec("demand_type", ("type", "source")),
+        ],
+    ),
+    "forecast": DumpType(
+        key="forecast",
+        label="Forecast (M1/M2/M3)",
+        model=Forecast,
+        description="Rolling monthly forecast per material (next three months).",
+        fields=[
+            FieldSpec("material_code", ("material", "sku", "rm_material_code"), required=True),
+            FieldSpec("m1_qty", ("m1", "m1_forecast", "month 1", "m1 f"), dtype="float"),
+            FieldSpec("m2_qty", ("m2", "m2_forecast", "month 2", "m2 f"), dtype="float"),
+            FieldSpec("m3_qty", ("m3", "m3_forecast", "month 3"), dtype="float"),
         ],
     ),
     "bom": DumpType(

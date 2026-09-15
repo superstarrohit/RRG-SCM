@@ -92,6 +92,7 @@ Everything is driven by **dump types** (see `backend/app/ingestion/dump_types.py
 | `demand`           | Forecast / requirements                  | `material_code`, `qty`        |
 | `inventory_snapshots` | Dated stock history (qty + value)     | `material_code`, `snapshot_date` |
 | `movements`        | Goods movements (GRN/issue/transfer)     | `material_code`, `qty`        |
+| `forecast`         | Rolling monthly forecast (M1/M2/M3)      | `material_code`               |
 | `bom`              | Bill of materials                        | `parent_material`, `component_material` |
 | `production_plan`  | Planned FG production                     | `material_code`, `planned_qty`|
 
@@ -164,7 +165,14 @@ Supported source types: `file`, `sqlserver`, `mysql`, `postgres`, `access`,
 | FG Planning          | `GET /api/analytics/fg-planning` | Production plan exploded through BOM, component availability, feasibility |
 | Stock Monitoring     | `GET /api/analytics/stock-monitoring` | Stock health & stockout risk: current stock vs safety/refill/max + incoming + demand, classified (stockout/critical/low/healthy/overstock); commodity & buyer filters |
 | Inventory Monitoring | `GET /api/analytics/inventory-monitoring` | Inventory value & qty trends over time (from history snapshots) with commodity/location/buyer breakdowns and MoM change |
+| Vendor Receipts      | `GET /api/analytics/vendor-receipts` | Inbound GRN trends by supplier & commodity over time |
+| Movements            | `GET /api/analytics/movements` | Goods movements by type (GRN/issue/transfer/adjustment), inflow/outflow, recent activity |
+| Forecasting          | `GET /api/analytics/forecasting` | Rolling M1/M2/M3 forecast vs current supply (stock + incoming); coverage gaps |
 | Overall SCM          | `GET /api/analytics/overview` | Cross-module executive dashboard + data freshness |
+
+**Global slicers:** most report endpoints accept `commodity` and `buyer` query
+params (options from `GET /api/meta/slicers`). The web app has a global filter
+bar under the top nav that applies these across every report page.
 
 All accept an optional `as_of=YYYY-MM-DD` query parameter.
 

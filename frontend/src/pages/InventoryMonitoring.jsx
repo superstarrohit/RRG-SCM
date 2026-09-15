@@ -5,36 +5,23 @@ import {
   Loading, ErrorState, EmptyState, useApi, fmtMoney, fmtNum,
 } from "../components/ui.jsx";
 import { LineChart, VBars, PALETTE } from "../components/charts.jsx";
+import { useFilters } from "../components/filters.jsx";
 
 export default function InventoryMonitoring() {
-  const [commodity, setCommodity] = React.useState("");
-  const [buyer, setBuyer] = React.useState("");
+  const flt = useFilters();
   const [metric, setMetric] = React.useState("value");
   const { loading, data, error } = useApi(
-    () => api.inventoryMonitoring({ commodity, buyer, top_n: 12 }),
-    [commodity, buyer]
+    () => api.inventoryMonitoring({ ...flt.params, top_n: 12 }),
+    [flt.key]
   );
   if (loading) return <Loading />;
   if (error) return <ErrorState error={error} />;
 
-  const f = data.filters || { commodity: [], buyer: [] };
   const head = (
     <PageHeader
       title="Inventory Monitoring"
       subtitle="Stock value & quantity trends over time, with breakdowns by commodity, location and buyer."
       asOf={data.as_of}
-      right={
-        <div className="controls">
-          <select value={commodity} onChange={(e) => setCommodity(e.target.value)} title="Commodity">
-            <option value="">All commodities</option>
-            {f.commodity.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-          <select value={buyer} onChange={(e) => setBuyer(e.target.value)} title="Buyer">
-            <option value="">All buyers</option>
-            {f.buyer.map((b) => <option key={b} value={b}>{b}</option>)}
-          </select>
-        </div>
-      }
     />
   );
   if (data.empty) return <div>{head}<EmptyState message={data.message} /></div>;

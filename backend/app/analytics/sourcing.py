@@ -14,13 +14,21 @@ from app.analytics.common import load_df, safe_round
 from sqlalchemy.orm import Session
 
 
-def analyze(db: Session, *, as_of: date | None = None, top_n: int = 20) -> dict:
+def analyze(db: Session, *, as_of: date | None = None, top_n: int = 20,
+            commodity: str | None = None, buyer: str | None = None) -> dict:
+    from app.analytics.common import allowed_codes, filter_codes, filter_options
     pos = load_df(db, "open_pos")
     receipts = load_df(db, "receipts")
     suppliers = load_df(db, "suppliers")
+    materials = load_df(db, "materials")
+    opts = filter_options(materials, commodity, buyer)
+
+    codes = allowed_codes(materials, commodity, buyer)
+    pos = filter_codes(pos, codes)
+    receipts = filter_codes(receipts, codes)
 
     if pos.empty and receipts.empty:
-        return _empty(as_of)
+        return {**_empty(as_of), "filters": opts}
 
     supplier_names = {}
     if not suppliers.empty:
@@ -42,6 +50,7 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 20) -> dict:
     return {
         "as_of": (as_of or date.today()).isoformat(),
         "empty": False,
+        "filters": opts,
         "kpis": kpis,
         "supplier_spend": spend,
         "on_time_performance": otif,

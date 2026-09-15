@@ -15,14 +15,19 @@ from app.analytics.common import load_df, safe_round
 from app.models import IngestionLog
 
 
-def analyze(db: Session, *, as_of: date | None = None) -> dict:
-    incoming = incoming_materials.analyze(db, as_of=as_of)
-    planning = material_planning.analyze(db, as_of=as_of)
-    srcing = sourcing.analyze(db, as_of=as_of)
+def analyze(db: Session, *, as_of: date | None = None,
+            commodity: str | None = None, buyer: str | None = None) -> dict:
+    from app.analytics.common import allowed_codes, filter_codes, filter_options
+    kw = {"commodity": commodity, "buyer": buyer}
+    incoming = incoming_materials.analyze(db, as_of=as_of, **kw)
+    planning = material_planning.analyze(db, as_of=as_of, **kw)
+    srcing = sourcing.analyze(db, as_of=as_of, **kw)
 
-    stock = load_df(db, "stock")
-    stock_value = 0.0
     materials = load_df(db, "materials")
+    opts = filter_options(materials, commodity, buyer)
+    codes = allowed_codes(materials, commodity, buyer)
+    stock = filter_codes(load_df(db, "stock"), codes)
+    stock_value = 0.0
     if not stock.empty and not materials.empty:
         merged = stock.merge(
             materials[["material_code", "unit_cost"]], on="material_code", how="left"
@@ -35,6 +40,7 @@ def analyze(db: Session, *, as_of: date | None = None) -> dict:
 
     return {
         "as_of": (as_of or date.today()).isoformat(),
+        "filters": opts,
         "kpis": {
             "inventory_value": safe_round(stock_value),
             "incoming_value": incoming["kpis"]["open_value"],

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     BOMLine,
     Demand,
+    Forecast,
     InventorySnapshot,
     Material,
     Movement,
@@ -30,6 +31,7 @@ _MODEL_BY_NAME = {
     "open_pos": PurchaseOrder,
     "receipts": Receipt,
     "demand": Demand,
+    "forecast": Forecast,
     "inventory_snapshots": InventorySnapshot,
     "movements": Movement,
     "bom": BOMLine,
@@ -75,3 +77,30 @@ def safe_round(x, ndigits: int = 2):
 
 def today(as_of: date | None = None) -> pd.Timestamp:
     return pd.Timestamp(as_of or date.today())
+
+
+def allowed_codes(materials: pd.DataFrame, commodity: str | None = None, buyer: str | None = None):
+    """Set of material_codes matching the commodity/buyer slicers, or None (=all)."""
+    if materials.empty or (not commodity and not buyer):
+        return None
+    df = materials
+    if commodity and "commodity" in df:
+        df = df[df["commodity"] == commodity]
+    if buyer and "buyer" in df:
+        df = df[df["buyer"] == buyer]
+    return set(df["material_code"])
+
+
+def filter_codes(df: pd.DataFrame, codes) -> pd.DataFrame:
+    """Restrict a frame to the allowed material_codes (no-op if codes is None)."""
+    if codes is None or df.empty or "material_code" not in df:
+        return df
+    return df[df["material_code"].isin(codes)]
+
+
+def filter_options(materials: pd.DataFrame, commodity=None, buyer=None) -> dict:
+    """The slicer option lists + current selection, for the UI."""
+    def opts(col):
+        return sorted(materials[col].dropna().unique().tolist()) if (not materials.empty and col in materials) else []
+    return {"commodity": opts("commodity"), "buyer": opts("buyer"),
+            "selected": {"commodity": commodity, "buyer": buyer}}

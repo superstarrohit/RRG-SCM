@@ -111,3 +111,15 @@ class Demand(Base, TimestampMixin):
     period: Mapped[date | None] = mapped_column(Date, index=True)
     qty: Mapped[float] = mapped_column(Float, default=0.0)
     demand_type: Mapped[str | None] = mapped_column(String(32))  # forecast/so/prod
+
+
+class Forecast(Base, TimestampMixin):
+    """Rolling monthly forecast per material (M1 = next month, M2, M3)."""
+
+    __tablename__ = "forecast"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    material_code: Mapped[str] = mapped_column(String(64), index=True)
+    m1_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    m2_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    m3_qty: Mapped[float] = mapped_column(Float, default=0.0)

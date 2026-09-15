@@ -47,6 +47,9 @@ const P = {
   gauge: "M12 21a9 9 0 1 1 0-18 9 9 0 0 1 9 9M12 12l4-3M3 12h2M19 12h2M12 5V3",
   trend: "M23 6l-9.5 9.5-5-5L1 18M17 6h6v6",
   pulse: "M22 12h-4l-3 9L9 3l-3 9H2",
+  target: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4",
+  flow: "M4 6h10M4 6l3-3M4 6l3 3M20 12H10M20 12l-3-3M20 12l-3 3M16 18H6M6 18l3-3M6 18l3 3",
+  receipt: "M4 2v20l3-2 3 2 3-2 3 2 3-2V2l-3 2-3-2-3 2-3-2zM8 8h8M8 12h8M8 16h5",
 };
 
 export default function Icon({ name, size }) {

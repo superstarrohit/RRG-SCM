@@ -2,12 +2,15 @@
 from app.analytics import (
     costing,
     fg_planning,
+    forecasting,
     incoming_materials,
     inventory_monitoring,
     material_planning,
+    movements,
     overview,
     sourcing,
     stock_monitoring,
+    vendor_receipts,
 )
 
 __all__ = [
@@ -19,4 +22,7 @@ __all__ = [
     "overview",
     "stock_monitoring",
     "inventory_monitoring",
+    "vendor_receipts",
+    "movements",
+    "forecasting",
 ]

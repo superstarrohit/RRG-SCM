@@ -1,6 +1,7 @@
 import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import Icon from "./icons.jsx";
+import { FilterBar } from "./filters.jsx";
 
 const TABS = [
   { to: "/", label: "Dashboard", icon: "dashboard", end: true },
@@ -11,6 +12,9 @@ const TABS = [
   { to: "/fg-planning", label: "FG Planning", icon: "factory" },
   { to: "/stock-monitoring", label: "Stock", icon: "gauge" },
   { to: "/inventory-monitoring", label: "Inventory", icon: "trend" },
+  { to: "/vendor-receipts", label: "Receipts", icon: "receipt" },
+  { to: "/movements", label: "Movements", icon: "flow" },
+  { to: "/forecasting", label: "Forecast", icon: "target" },
   { to: "/data", label: "Data", icon: "database" },
 ];
 
@@ -48,6 +52,7 @@ export default function Layout({ children }) {
           </button>
         </div>
       </header>
+      <FilterBar />
       <main className="content">{children}</main>
     </div>
   );

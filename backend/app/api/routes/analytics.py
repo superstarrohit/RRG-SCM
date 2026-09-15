@@ -9,12 +9,15 @@ from sqlalchemy.orm import Session
 from app.analytics import (
     costing,
     fg_planning,
+    forecasting,
     incoming_materials,
     inventory_monitoring,
     material_planning,
+    movements,
     overview,
     sourcing,
     stock_monitoring,
+    vendor_receipts,
 )
 from app.database import get_db
 
@@ -25,9 +28,18 @@ def _as_of(as_of: str | None) -> date | None:
     return date.fromisoformat(as_of) if as_of else None
 
 
+# Shared global slicers.
+def _slicers(
+    commodity: str | None = Query(None),
+    buyer: str | None = Query(None),
+) -> dict:
+    return {"commodity": commodity, "buyer": buyer}
+
+
 @router.get("/overview")
-def get_overview(as_of: str | None = Query(None), db: Session = Depends(get_db)) -> dict:
-    return overview.analyze(db, as_of=_as_of(as_of))
+def get_overview(as_of: str | None = Query(None), f: dict = Depends(_slicers),
+                 db: Session = Depends(get_db)) -> dict:
+    return overview.analyze(db, as_of=_as_of(as_of), **f)
 
 
 @router.get("/incoming")
@@ -35,10 +47,11 @@ def get_incoming(
     as_of: str | None = Query(None),
     horizon_weeks: int = Query(8, ge=1, le=52),
     top_n: int = Query(15, ge=1, le=100),
+    f: dict = Depends(_slicers),
     db: Session = Depends(get_db),
 ) -> dict:
     return incoming_materials.analyze(
-        db, as_of=_as_of(as_of), horizon_weeks=horizon_weeks, top_n=top_n
+        db, as_of=_as_of(as_of), horizon_weeks=horizon_weeks, top_n=top_n, **f
     )
 
 
@@ -46,18 +59,20 @@ def get_incoming(
 def get_planning(
     as_of: str | None = Query(None),
     top_n: int = Query(20, ge=1, le=200),
+    f: dict = Depends(_slicers),
     db: Session = Depends(get_db),
 ) -> dict:
-    return material_planning.analyze(db, as_of=_as_of(as_of), top_n=top_n)
+    return material_planning.analyze(db, as_of=_as_of(as_of), top_n=top_n, **f)
 
 
 @router.get("/sourcing")
 def get_sourcing(
     as_of: str | None = Query(None),
     top_n: int = Query(20, ge=1, le=200),
+    f: dict = Depends(_slicers),
     db: Session = Depends(get_db),
 ) -> dict:
-    return sourcing.analyze(db, as_of=_as_of(as_of), top_n=top_n)
+    return sourcing.analyze(db, as_of=_as_of(as_of), top_n=top_n, **f)
 
 
 @router.get("/costing")
@@ -98,3 +113,33 @@ def get_inventory_monitoring(
     db: Session = Depends(get_db),
 ) -> dict:
     return inventory_monitoring.analyze(db, as_of=_as_of(as_of), commodity=commodity, buyer=buyer, top_n=top_n)
+
+
+@router.get("/vendor-receipts")
+def get_vendor_receipts(
+    as_of: str | None = Query(None),
+    top_n: int = Query(12, ge=1, le=100),
+    f: dict = Depends(_slicers),
+    db: Session = Depends(get_db),
+) -> dict:
+    return vendor_receipts.analyze(db, as_of=_as_of(as_of), top_n=top_n, **f)
+
+
+@router.get("/movements")
+def get_movements(
+    as_of: str | None = Query(None),
+    top_n: int = Query(20, ge=1, le=200),
+    f: dict = Depends(_slicers),
+    db: Session = Depends(get_db),
+) -> dict:
+    return movements.analyze(db, as_of=_as_of(as_of), top_n=top_n, **f)
+
+
+@router.get("/forecasting")
+def get_forecasting(
+    as_of: str | None = Query(None),
+    top_n: int = Query(30, ge=1, le=500),
+    f: dict = Depends(_slicers),
+    db: Session = Depends(get_db),
+) -> dict:
+    return forecasting.analyze(db, as_of=_as_of(as_of), top_n=top_n, **f)

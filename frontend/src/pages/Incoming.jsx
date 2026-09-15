@@ -5,6 +5,7 @@ import {
   Loading, ErrorState, EmptyState, useApi, fmtMoney, fmtNum, fmtPct,
 } from "../components/ui.jsx";
 import { Donut, VBars, LineChart, StatusBars, PALETTE } from "../components/charts.jsx";
+import { useFilters } from "../components/filters.jsx";
 
 const STATUS_COLOR = {
   Overdue: PALETTE.red,
@@ -15,7 +16,8 @@ const STATUS_COLOR = {
 };
 
 export default function Incoming() {
-  const { loading, data, error } = useApi(() => api.incoming({ horizon_weeks: 8, top_n: 15 }), []);
+  const f = useFilters();
+  const { loading, data, error } = useApi(() => api.incoming({ horizon_weeks: 8, top_n: 15, ...f.params }), [f.key]);
   if (loading) return <Loading />;
   if (error) return <ErrorState error={error} />;
 

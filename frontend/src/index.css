@@ -120,6 +120,21 @@ a { color: inherit; text-decoration: none; }
 .btn:active { transform: translateY(0); }
 .btn.ghost { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); box-shadow: none; }
 
+/* ---- Global slicer bar ---- */
+.filterbar {
+  position: sticky; top: 71px; z-index: 30;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 10px 26px;
+  background: linear-gradient(180deg, rgba(16,18,28,0.9), rgba(16,18,28,0.72));
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.filterbar .fb-label { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: var(--text-dim); }
+.filterbar .fb-label svg { width: 14px; height: 14px; }
+.filterbar select { padding: 7px 11px; font-size: 12.5px; }
+.filterbar .fb-hint { font-size: 11.5px; margin-left: auto; }
+@media (max-width: 720px) { .filterbar { top: auto; position: static; padding: 10px 14px; } .filterbar .fb-hint { display: none; } }
+
 .content { flex: 1; padding: 26px; max-width: 1440px; width: 100%; margin: 0 auto; }
 
 /* ---- Page header ---- */

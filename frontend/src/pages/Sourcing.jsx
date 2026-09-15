@@ -5,9 +5,11 @@ import {
   Loading, ErrorState, EmptyState, useApi, fmtMoney, fmtNum, fmtPct,
 } from "../components/ui.jsx";
 import { VBars, PALETTE } from "../components/charts.jsx";
+import { useFilters } from "../components/filters.jsx";
 
 export default function Sourcing() {
-  const { loading, data, error } = useApi(() => api.sourcing({ top_n: 25 }), []);
+  const f = useFilters();
+  const { loading, data, error } = useApi(() => api.sourcing({ top_n: 25, ...f.params }), [f.key]);
   if (loading) return <Loading />;
   if (error) return <ErrorState error={error} />;
 

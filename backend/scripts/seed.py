@@ -211,6 +211,17 @@ def build_frames() -> dict[str, pd.DataFrame]:
     movements = pd.DataFrame(
         mv, columns=["material_code", "mvt_type", "description", "qty", "value", "movement_date"])
 
+    # --- Forecast (rolling M1/M2/M3 per material) ---
+    fc = [
+        ("RM-1001", 2600, 2800, 2500), ("RM-1002", 950, 1000, 900),
+        ("RM-1003", 1900, 2000, 1850), ("RM-1004", 700, 750, 720),
+        ("CP-2001", 720, 760, 700), ("CP-2002", 9000, 9500, 9000),
+        ("CP-2003", 210, 230, 200), ("CP-2004", 480, 500, 460),
+        ("SA-3001", 36, 40, 34), ("FG-5001", 42, 48, 40),
+        ("FG-5002", 26, 30, 24), ("PK-4001", 5200, 5400, 5000),
+    ]
+    forecast = pd.DataFrame(fc, columns=["material_code", "m1_qty", "m2_qty", "m3_qty"])
+
     return {
         "materials": materials,
         "suppliers": suppliers,
@@ -219,6 +230,7 @@ def build_frames() -> dict[str, pd.DataFrame]:
         "open_pos": open_pos,
         "receipts": receipts,
         "demand": demand,
+        "forecast": forecast,
         "inventory_snapshots": inventory_snapshots,
         "movements": movements,
         "bom": bom,

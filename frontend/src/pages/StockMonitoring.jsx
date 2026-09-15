@@ -5,6 +5,7 @@ import {
   Loading, ErrorState, EmptyState, useApi, fmtMoney, fmtNum,
 } from "../components/ui.jsx";
 import { Donut, PALETTE } from "../components/charts.jsx";
+import { useFilters } from "../components/filters.jsx";
 
 const STATUS_COLOR = {
   stockout: PALETTE.red, critical: PALETTE.amber, low: PALETTE.blue,
@@ -13,24 +14,19 @@ const STATUS_COLOR = {
 const STATUS_BADGE = { stockout: "short", critical: "short", low: "due_this_month", healthy: "ok", overstock: "excess" };
 
 export default function StockMonitoring() {
-  const [commodity, setCommodity] = React.useState("");
-  const [buyer, setBuyer] = React.useState("");
+  const flt = useFilters();
   const { loading, data, error } = useApi(
-    () => api.stockMonitoring({ commodity, buyer, top_n: 200 }),
-    [commodity, buyer]
+    () => api.stockMonitoring({ ...flt.params, top_n: 200 }),
+    [flt.key]
   );
   if (loading) return <Loading />;
   if (error) return <ErrorState error={error} />;
 
-  const f = data.filters || { commodity: [], buyer: [] };
   const head = (
     <PageHeader
       title="Stock Monitoring"
       subtitle="Stock health & stockout risk — current stock vs safety / refill / max levels, incoming POs and demand."
       asOf={data.as_of}
-      right={
-        <Filters f={f} commodity={commodity} buyer={buyer} setCommodity={setCommodity} setBuyer={setBuyer} />
-      }
     />
   );
   if (data.empty) return <div>{head}<EmptyState message={data.message} /></div>;
@@ -90,17 +86,3 @@ export default function StockMonitoring() {
   );
 }
 
-function Filters({ f, commodity, buyer, setCommodity, setBuyer }) {
-  return (
-    <div className="controls">
-      <select value={commodity} onChange={(e) => setCommodity(e.target.value)} title="Commodity">
-        <option value="">All commodities</option>
-        {f.commodity.map((c) => <option key={c} value={c}>{c}</option>)}
-      </select>
-      <select value={buyer} onChange={(e) => setBuyer(e.target.value)} title="Buyer">
-        <option value="">All buyers</option>
-        {f.buyer.map((b) => <option key={b} value={b}>{b}</option>)}
-      </select>
-    </div>
-  );
-}

@@ -14,15 +14,24 @@ from app.analytics.common import load_df, safe_round, today
 from sqlalchemy.orm import Session
 
 
-def analyze(db: Session, *, as_of: date | None = None, top_n: int = 20) -> dict:
+def analyze(db: Session, *, as_of: date | None = None, top_n: int = 20,
+            commodity: str | None = None, buyer: str | None = None) -> dict:
+    from app.analytics.common import allowed_codes, filter_codes, filter_options
     materials = load_df(db, "materials")
     stock = load_df(db, "stock")
     pos = load_df(db, "open_pos")
     demand = load_df(db, "demand")
     now = today(as_of)
+    opts = filter_options(materials, commodity, buyer)
 
     if materials.empty and stock.empty and demand.empty:
-        return _empty(as_of)
+        return {**_empty(as_of), "filters": opts}
+
+    codes = allowed_codes(materials, commodity, buyer)
+    materials = filter_codes(materials, codes)
+    stock = filter_codes(stock, codes)
+    pos = filter_codes(pos, codes)
+    demand = filter_codes(demand, codes)
 
     base = _material_base(materials, stock)
 
@@ -89,6 +98,7 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 20) -> dict:
     return {
         "as_of": (as_of or date.today()).isoformat(),
         "empty": False,
+        "filters": opts,
         "kpis": kpis,
         "shortages": _rows(shortages.head(top_n)),
         "excess": _rows(excess.head(top_n)),
