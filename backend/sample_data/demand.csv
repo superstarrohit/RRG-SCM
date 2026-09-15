@@ -1,9 +1,9 @@
 material_code,period,qty,demand_type
-RM-1001,2026-10-14,2500,forecast
-RM-1002,2026-10-14,900,forecast
-RM-1003,2026-10-14,1800,forecast
-CP-2003,2026-10-14,200,forecast
-CP-2001,2026-10-14,700,forecast
-FG-5001,2026-10-14,40,so
-FG-5002,2026-10-14,25,so
-SA-3001,2026-10-14,35,prod
+RM-1001,2026-10-15,2500,forecast
+RM-1002,2026-10-15,900,forecast
+RM-1003,2026-10-15,1800,forecast
+CP-2003,2026-10-15,200,forecast
+CP-2001,2026-10-15,700,forecast
+FG-5001,2026-10-15,40,so
+FG-5002,2026-10-15,25,so
+SA-3001,2026-10-15,35,prod

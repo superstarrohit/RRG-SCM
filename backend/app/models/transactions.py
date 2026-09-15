@@ -74,6 +74,33 @@ class Receipt(Base, TimestampMixin):
     receipt_date: Mapped[date | None] = mapped_column(Date, index=True)
 
 
+class InventorySnapshot(Base, TimestampMixin):
+    """Historical stock snapshots for inventory trend analysis (qty + value)."""
+
+    __tablename__ = "inventory_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    material_code: Mapped[str] = mapped_column(String(64), index=True)
+    location: Mapped[str | None] = mapped_column(String(64), index=True)
+    snapshot_date: Mapped[date | None] = mapped_column(Date, index=True)
+    qty: Mapped[float] = mapped_column(Float, default=0.0)
+    value: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class Movement(Base, TimestampMixin):
+    """Material movements: receipts, issues, transfers, adjustments (GRN etc.)."""
+
+    __tablename__ = "movements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    material_code: Mapped[str] = mapped_column(String(64), index=True)
+    mvt_type: Mapped[str | None] = mapped_column(String(64), index=True)  # e.g. GRN, Issue
+    description: Mapped[str | None] = mapped_column(String(255))
+    qty: Mapped[float] = mapped_column(Float, default=0.0)
+    value: Mapped[float] = mapped_column(Float, default=0.0)
+    movement_date: Mapped[date | None] = mapped_column(Date, index=True)
+
+
 class Demand(Base, TimestampMixin):
     """Demand / requirements (forecast, sales orders, or production demand)."""
 

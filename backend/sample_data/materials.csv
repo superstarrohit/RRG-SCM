@@ -1,13 +1,13 @@
-material_code,description,category,uom,unit_cost,lead_time_days,safety_stock,reorder_point,min_order_qty,abc_class
-RM-1001,Steel Sheet 2mm,Raw Material,KG,3.2,21,500,800,1000,A
-RM-1002,Aluminium Bar,Raw Material,KG,5.1,28,300,500,500,A
-RM-1003,Copper Wire,Raw Material,M,1.75,14,1000,1500,2000,B
-RM-1004,Plastic Granule,Raw Material,KG,0.95,10,800,1200,1000,C
-CP-2001,Bearing 6203,Component,EA,2.4,30,200,400,500,B
-CP-2002,Fastener M6,Component,EA,0.05,7,5000,8000,10000,C
-CP-2003,Control Board,Component,EA,18.5,45,50,120,100,A
-CP-2004,Gasket Set,Component,EA,1.2,21,300,500,500,C
-SA-3001,Motor Assembly,Sub-Assembly,EA,42.0,14,20,40,25,A
-FG-5001,Pump Unit A,Finished Good,EA,0.0,0,10,20,10,A
-FG-5002,Pump Unit B,Finished Good,EA,0.0,0,5,15,10,A
-PK-4001,Carton Box,Packaging,EA,0.3,7,2000,3000,5000,C
+material_code,description,category,uom,unit_cost,lead_time_days,safety_stock,reorder_point,min_order_qty,abc_class,commodity,buyer,refill_level,max_level
+RM-1001,Steel Sheet 2mm,Raw Material,KG,3.2,21,500,800,1000,A,Metals & Polymers,A. Khan,800,2000
+RM-1002,Aluminium Bar,Raw Material,KG,5.1,28,300,500,500,A,Metals & Polymers,L. Meyer,500,1200
+RM-1003,Copper Wire,Raw Material,M,1.75,14,1000,1500,2000,B,Metals & Polymers,S. Rao,1500,4000
+RM-1004,Plastic Granule,Raw Material,KG,0.95,10,800,1200,1000,C,Metals & Polymers,T. Costa,1200,3200
+CP-2001,Bearing 6203,Component,EA,2.4,30,200,400,500,B,Electro-Mechanical,A. Khan,400,800
+CP-2002,Fastener M6,Component,EA,0.05,7,5000,8000,10000,C,Electro-Mechanical,L. Meyer,8000,20000
+CP-2003,Control Board,Component,EA,18.5,45,50,120,100,A,Electro-Mechanical,S. Rao,120,200
+CP-2004,Gasket Set,Component,EA,1.2,21,300,500,500,C,Electro-Mechanical,T. Costa,500,1200
+SA-3001,Motor Assembly,Sub-Assembly,EA,42.0,14,20,40,25,A,Assemblies,A. Khan,40,80
+FG-5001,Pump Unit A,Finished Good,EA,0.0,0,10,20,10,A,Finished Goods,L. Meyer,20,40
+FG-5002,Pump Unit B,Finished Good,EA,0.0,0,5,15,10,A,Finished Goods,S. Rao,15,20
+PK-4001,Carton Box,Packaging,EA,0.3,7,2000,3000,5000,C,Packaging,T. Costa,3000,8000

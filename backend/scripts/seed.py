@@ -32,6 +32,14 @@ def d(offset_days: int) -> str:
     return (TODAY + timedelta(days=offset_days)).isoformat()
 
 
+def month_offset(months: int) -> str:
+    """First-of-month date `months` from the current month (months<=0 = past)."""
+    y, m = TODAY.year, TODAY.month + months
+    y += (m - 1) // 12
+    m = (m - 1) % 12 + 1
+    return date(y, m, 1).isoformat()
+
+
 def build_frames() -> dict[str, pd.DataFrame]:
     materials = pd.DataFrame(
         [
@@ -52,6 +60,16 @@ def build_frames() -> dict[str, pd.DataFrame]:
         columns=["material_code", "description", "category", "uom", "unit_cost",
                  "lead_time_days", "safety_stock", "reorder_point", "min_order_qty", "abc_class"],
     )
+    # Enrich material master with the reference-report dimensions.
+    commodity_map = {
+        "Raw Material": "Metals & Polymers", "Component": "Electro-Mechanical",
+        "Sub-Assembly": "Assemblies", "Finished Good": "Finished Goods", "Packaging": "Packaging",
+    }
+    buyers = ["A. Khan", "L. Meyer", "S. Rao", "T. Costa"]
+    materials["commodity"] = materials["category"].map(commodity_map).fillna("General")
+    materials["buyer"] = [buyers[i % len(buyers)] for i in range(len(materials))]
+    materials["refill_level"] = materials["reorder_point"]
+    materials["max_level"] = (materials["safety_stock"] * 4).round()
 
     suppliers = pd.DataFrame(
         [
@@ -159,6 +177,40 @@ def build_frames() -> dict[str, pd.DataFrame]:
         columns=["material_code", "period", "planned_qty"],
     )
 
+    # --- Inventory history (8 monthly snapshots, per material x location) ---
+    import math
+    stock_now = dict(zip(stock["material_code"], stock["qty_on_hand"]))
+    cost_map = dict(zip(materials["material_code"], materials["unit_cost"]))
+    loc_map = {"WH-NORTH": 0.6, "WH-SOUTH": 0.4}
+    inv_rows = []
+    for m in materials["material_code"]:
+        base_qty = float(stock_now.get(m, 100)) or 100.0
+        cost = float(cost_map.get(m, 1.0))
+        for i, off in enumerate(range(-7, 1)):  # 8 months ending this month
+            # gentle wave so trends are visible
+            factor = 0.75 + 0.35 * (i / 7.0) + 0.08 * math.sin(i)
+            for loc, share in loc_map.items():
+                qty = round(base_qty * factor * share, 1)
+                inv_rows.append((m, loc, month_offset(off), qty, round(qty * cost, 2)))
+    inventory_snapshots = pd.DataFrame(
+        inv_rows, columns=["material_code", "location", "snapshot_date", "qty", "value"])
+
+    # --- Movements (recent goods movements) ---
+    mv = [
+        ("RM-1001", "GRN", "Goods receipt", 2000, 6300, d(-25)),
+        ("RM-1002", "GRN", "Goods receipt", 300, 1500, d(-10)),
+        ("RM-1001", "Issue", "Production issue", -1500, -4725, d(-8)),
+        ("CP-2003", "GRN", "Goods receipt", 100, 1840, d(-20)),
+        ("CP-2001", "Issue", "Production issue", -400, -960, d(-6)),
+        ("RM-1003", "GRN", "Goods receipt", 500, 850, d(-7)),
+        ("SA-3001", "Transfer", "Warehouse transfer", 20, 840, d(-4)),
+        ("RM-1004", "Adjustment", "Cycle count adj.", -30, -28, d(-3)),
+        ("CP-2002", "Issue", "Production issue", -3000, -144, d(-2)),
+        ("PK-4001", "GRN", "Goods receipt", 5000, 1500, d(-1)),
+    ]
+    movements = pd.DataFrame(
+        mv, columns=["material_code", "mvt_type", "description", "qty", "value", "movement_date"])
+
     return {
         "materials": materials,
         "suppliers": suppliers,
@@ -167,6 +219,8 @@ def build_frames() -> dict[str, pd.DataFrame]:
         "open_pos": open_pos,
         "receipts": receipts,
         "demand": demand,
+        "inventory_snapshots": inventory_snapshots,
+        "movements": movements,
         "bom": bom,
         "production_plan": production_plan,
     }

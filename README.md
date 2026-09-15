@@ -90,8 +90,15 @@ Everything is driven by **dump types** (see `backend/app/ingestion/dump_types.py
 | `open_pos`         | Open purchase-order lines (incoming)    | `po_number`, `material_code`  |
 | `receipts`         | Goods receipts (GRN)                     | `material_code`, `qty`        |
 | `demand`           | Forecast / requirements                  | `material_code`, `qty`        |
+| `inventory_snapshots` | Dated stock history (qty + value)     | `material_code`, `snapshot_date` |
+| `movements`        | Goods movements (GRN/issue/transfer)     | `material_code`, `qty`        |
 | `bom`              | Bill of materials                        | `parent_material`, `component_material` |
 | `production_plan`  | Planned FG production                     | `material_code`, `planned_qty`|
+
+The `materials` master also carries **commodity**, **buyer**, **refill_level**
+and **max_level** — the sourcing/planning dimensions used across the reports
+(modelled on a real Power BI SCM report: Incoming, SCM Planning, Inventory
+Monitoring, Vendor Receipts, Movements, FG Planning and Stock Monitoring).
 
 **Flexible column mapping:** headers are matched case-insensitively with common
 aliases and separators normalised, so `PO No`, `Material`, `Vendor`, `ETA` map to
@@ -155,6 +162,8 @@ Supported source types: `file`, `sqlserver`, `mysql`, `postgres`, `access`,
 | Sourcing             | `GET /api/analytics/sourcing` | Supplier spend, on-time (OTIF) performance, price benchmarking, single-source risk |
 | Costing              | `GET /api/analytics/costing`  | Multi-level BOM cost roll-up vs standard cost |
 | FG Planning          | `GET /api/analytics/fg-planning` | Production plan exploded through BOM, component availability, feasibility |
+| Stock Monitoring     | `GET /api/analytics/stock-monitoring` | Stock health & stockout risk: current stock vs safety/refill/max + incoming + demand, classified (stockout/critical/low/healthy/overstock); commodity & buyer filters |
+| Inventory Monitoring | `GET /api/analytics/inventory-monitoring` | Inventory value & qty trends over time (from history snapshots) with commodity/location/buyer breakdowns and MoM change |
 | Overall SCM          | `GET /api/analytics/overview` | Cross-module executive dashboard + data freshness |
 
 All accept an optional `as_of=YYYY-MM-DD` query parameter.

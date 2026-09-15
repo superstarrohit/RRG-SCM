@@ -5,6 +5,8 @@ from app.models.master import Material, Supplier
 from app.models.product import BOMLine, ProductionPlan
 from app.models.transactions import (
     Demand,
+    InventorySnapshot,
+    Movement,
     PurchaseOrder,
     Receipt,
     Stock,
@@ -21,6 +23,8 @@ __all__ = [
     "PurchaseOrder",
     "Receipt",
     "Demand",
+    "InventorySnapshot",
+    "Movement",
     "BOMLine",
     "ProductionPlan",
     "IngestionLog",

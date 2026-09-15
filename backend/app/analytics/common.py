@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 from app.models import (
     BOMLine,
     Demand,
+    InventorySnapshot,
     Material,
+    Movement,
     ProductionPlan,
     PurchaseOrder,
     Receipt,
@@ -28,6 +30,8 @@ _MODEL_BY_NAME = {
     "open_pos": PurchaseOrder,
     "receipts": Receipt,
     "demand": Demand,
+    "inventory_snapshots": InventorySnapshot,
+    "movements": Movement,
     "bom": BOMLine,
     "production_plan": ProductionPlan,
 }

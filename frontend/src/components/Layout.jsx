@@ -9,6 +9,8 @@ const TABS = [
   { to: "/sourcing", label: "Sourcing", icon: "handshake" },
   { to: "/costing", label: "Costing", icon: "dollar" },
   { to: "/fg-planning", label: "FG Planning", icon: "factory" },
+  { to: "/stock-monitoring", label: "Stock", icon: "gauge" },
+  { to: "/inventory-monitoring", label: "Inventory", icon: "trend" },
   { to: "/data", label: "Data", icon: "database" },
 ];
 

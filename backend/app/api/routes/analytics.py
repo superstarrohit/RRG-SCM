@@ -10,9 +10,11 @@ from app.analytics import (
     costing,
     fg_planning,
     incoming_materials,
+    inventory_monitoring,
     material_planning,
     overview,
     sourcing,
+    stock_monitoring,
 )
 from app.database import get_db
 
@@ -74,3 +76,25 @@ def get_fg_planning(
     db: Session = Depends(get_db),
 ) -> dict:
     return fg_planning.analyze(db, as_of=_as_of(as_of), top_n=top_n)
+
+
+@router.get("/stock-monitoring")
+def get_stock_monitoring(
+    as_of: str | None = Query(None),
+    commodity: str | None = Query(None),
+    buyer: str | None = Query(None),
+    top_n: int = Query(25, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> dict:
+    return stock_monitoring.analyze(db, as_of=_as_of(as_of), commodity=commodity, buyer=buyer, top_n=top_n)
+
+
+@router.get("/inventory-monitoring")
+def get_inventory_monitoring(
+    as_of: str | None = Query(None),
+    commodity: str | None = Query(None),
+    buyer: str | None = Query(None),
+    top_n: int = Query(12, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> dict:
+    return inventory_monitoring.analyze(db, as_of=_as_of(as_of), commodity=commodity, buyer=buyer, top_n=top_n)
