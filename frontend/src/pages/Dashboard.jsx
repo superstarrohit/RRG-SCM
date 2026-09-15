@@ -1,17 +1,18 @@
 import React from "react";
 import { api } from "../api/client.js";
 import {
-  KpiCard,
-  Panel,
-  BarChart,
-  DataTable,
-  Badge,
-  Loading,
-  ErrorState,
-  useApi,
-  fmtMoney,
-  fmtNum,
+  KpiCard, Panel, PageHeader, DataTable, Badge,
+  Loading, ErrorState, useApi, fmtMoney, fmtNum, fmtPct,
 } from "../components/ui.jsx";
+import { Donut, VBars, LineChart, PALETTE } from "../components/charts.jsx";
+
+const STATUS_COLOR = {
+  Overdue: PALETTE.red,
+  "Due this week": PALETTE.amber,
+  "Due this month": PALETTE.blue,
+  "Future (>30d)": PALETTE.green,
+  "No ETA": PALETTE.grey,
+};
 
 export default function Dashboard() {
   const { loading, data, error } = useApi(() => api.overview(), []);
@@ -19,56 +20,55 @@ export default function Dashboard() {
   if (error) return <ErrorState error={error} />;
 
   const k = data.kpis;
+  const statusSegs = data.incoming_status.map((s) => ({
+    label: s.label, value: s.value, color: STATUS_COLOR[s.label] || PALETTE.purple,
+  }));
+  const supplierBars = data.top_suppliers.map((s) => ({
+    label: (s.supplier_name || s.supplier_code || "").split(" ")[0], value: s.open_value,
+  }));
+  const arrivals = data.arrival_timeline.map((w) => ({
+    label: w.label.length > 7 ? w.label.slice(5) : w.label, value: w.value,
+  }));
+
   return (
     <div>
-      <div className="page-header">
-        <div>
-          <h1>Overall SCM Dashboard</h1>
-          <p>Executive summary across inventory, incoming, planning and sourcing · as of {data.as_of}</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Overall SCM Dashboard"
+        subtitle="Executive summary across inventory, incoming, planning and sourcing."
+        asOf={data.as_of}
+      />
 
       <div className="kpi-grid">
-        <KpiCard label="Inventory Value" value={fmtMoney(k.inventory_value)} />
-        <KpiCard label="Incoming Value" value={fmtMoney(k.incoming_value)} />
-        <KpiCard
-          label="Overdue Incoming"
-          value={fmtMoney(k.overdue_value)}
-          accent={k.overdue_value > 0 ? "red" : "green"}
-        />
-        <KpiCard label="Shortage Items" value={fmtNum(k.shortage_items)} accent={k.shortage_items ? "amber" : "green"} />
-        <KpiCard label="Reorder Alerts" value={fmtNum(k.reorder_alerts)} accent={k.reorder_alerts ? "amber" : "green"} />
-        <KpiCard label="Active Suppliers" value={fmtNum(k.active_suppliers)} />
-        <KpiCard label="Single-Source Items" value={fmtNum(k.single_source_materials)} accent={k.single_source_materials ? "amber" : "green"} />
-        <KpiCard label="Avg On-Time %" value={`${fmtNum(k.avg_on_time_pct, 1)}%`} />
+        <KpiCard label="Inventory Value" value={fmtMoney(k.inventory_value)} icon="dollar" tone="green" />
+        <KpiCard label="Incoming Value" value={fmtMoney(k.incoming_value)} icon="truck" tone="blue" />
+        <KpiCard label="Overdue Incoming" value={fmtMoney(k.overdue_value)} icon="alert" tone="red"
+          delta={{ value: `${fmtPct(k.overdue_value / (k.incoming_value || 1) * 100)} of value`, dir: "down" }} />
+        <KpiCard label="Shortage Items" value={fmtNum(k.shortage_items)} icon="box" tone="amber" />
+        <KpiCard label="Reorder Alerts" value={fmtNum(k.reorder_alerts)} icon="clock" tone="amber" />
+        <KpiCard label="Active Suppliers" value={fmtNum(k.active_suppliers)} icon="handshake" tone="purple" />
+        <KpiCard label="Single-Source Items" value={fmtNum(k.single_source_materials)} icon="alert" tone="amber" />
+        <KpiCard label="Avg On-Time" value={fmtPct(k.avg_on_time_pct)} icon="chart" tone="cyan" />
       </div>
 
       <div className="panel-grid">
         <Panel title="Incoming Pipeline by Status">
-          <BarChart
-            data={(data.incoming_status || []).map((s) => ({
-              label: s.label,
-              value: s.value,
-            }))}
-            valueFormat={fmtMoney}
-          />
+          <Donut segments={statusSegs} centerValue={fmtMoney(k.incoming_value)} centerLabel="incoming" />
         </Panel>
-        <Panel title="Expected Arrivals (value / week)">
-          <BarChart
-            data={(data.arrival_timeline || []).map((w) => ({
-              label: w.label,
-              value: w.value,
-            }))}
-            valueFormat={fmtMoney}
-          />
+        <Panel title="Top Suppliers by Committed Value">
+          <VBars data={supplierBars} valueFormat={(v) => "$" + fmtNum(v / 1000) + "k"} color={PALETTE.purple} />
         </Panel>
       </div>
+
+      <Panel title="Expected Arrivals" hint="open PO value by week">
+        <LineChart data={arrivals} valueFormat={(v) => "$" + fmtNum(v / 1000) + "k"} color={PALETTE.cyan} />
+      </Panel>
 
       <div className="panel-grid">
         <Panel title="Top Shortages">
           <DataTable
             columns={[
-              { key: "material_code", label: "Material" },
+              { key: "material_code", label: "Material", render: (v) => <span className="mono strong">{v}</span> },
+              { key: "description", label: "Description" },
               { key: "net_requirement", label: "Net Req", num: true, render: (v) => fmtNum(v) },
               { key: "order_value", label: "Order Value", num: true, render: fmtMoney },
               { key: "status", label: "Status", render: (v) => <Badge value={v} /> },
@@ -76,37 +76,18 @@ export default function Dashboard() {
             rows={data.top_shortages}
           />
         </Panel>
-        <Panel title="Top Suppliers by Committed Value">
+        <Panel title="Data Freshness">
           <DataTable
             columns={[
-              { key: "supplier_code", label: "Supplier" },
-              { key: "supplier_name", label: "Name" },
-              { key: "open_value", label: "Open Value", num: true, render: fmtMoney },
+              { key: "label", label: "Dump" },
+              { key: "rows", label: "Rows", num: true, render: (v) => fmtNum(v) },
+              { key: "loaded", label: "Loaded", render: (v) => v ? <span className="badge b-green">yes</span> : <span className="badge b-grey">no</span> },
+              { key: "last_ingested", label: "Last Ingested", render: (v) => v ? new Date(v).toLocaleDateString() : "—" },
             ]}
-            rows={data.top_suppliers}
+            rows={data.data_status}
           />
         </Panel>
       </div>
-
-      <Panel title="Data Freshness">
-        <DataTable
-          columns={[
-            { key: "label", label: "Dump" },
-            { key: "rows", label: "Rows", num: true, render: (v) => fmtNum(v) },
-            {
-              key: "loaded",
-              label: "Loaded",
-              render: (v) => (v ? <span className="badge ok">yes</span> : <span className="badge no_date">no</span>),
-            },
-            {
-              key: "last_ingested",
-              label: "Last Ingested",
-              render: (v) => (v ? new Date(v).toLocaleString() : "—"),
-            },
-          ]}
-          rows={data.data_status}
-        />
-      </Panel>
     </div>
   );
 }

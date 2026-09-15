@@ -1,5 +1,6 @@
-// Small shared presentational components used across pages.
+// Shared presentational components + data hook.
 import React from "react";
+import Icon from "./icons.jsx";
 
 export function fmtNum(n, digits = 0) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -18,9 +19,23 @@ export function fmtMoney(n) {
   });
 }
 
-export function KpiCard({ label, value, sub, accent }) {
+export const fmtPct = (n, d = 1) =>
+  n === null || n === undefined ? "—" : `${fmtNum(n, d)}%`;
+
+// KPI card with gradient icon chip + optional delta pill.
+export function KpiCard({ label, value, sub, icon = "box", tone = "purple", delta }) {
   return (
-    <div className={`kpi ${accent ? "accent-" + accent : ""}`}>
+    <div className="kpi">
+      <div className="kpi-top">
+        <div className={`icon-chip ${tone}`}>
+          <Icon name={icon} />
+        </div>
+        {delta && (
+          <span className={`delta ${delta.dir || "flat"}`}>
+            {delta.dir === "up" ? "▲" : delta.dir === "down" ? "▼" : "—"} {delta.value}
+          </span>
+        )}
+      </div>
       <div className="label">{label}</div>
       <div className="value">{value}</div>
       {sub && <div className="sub">{sub}</div>}
@@ -28,65 +43,43 @@ export function KpiCard({ label, value, sub, accent }) {
   );
 }
 
+const BADGE = {
+  overdue: "b-red", short: "b-red", shortage: "b-red",
+  due_this_week: "b-amber", due_this_month: "b-blue",
+  future: "b-green", ok: "b-green", no_date: "b-grey", excess: "b-grey",
+  A: "b-red", B: "b-amber", C: "b-green", vip: "b-vip",
+};
 export function Badge({ value }) {
-  if (!value) return <span className="muted">—</span>;
-  return <span className={`badge ${value}`}>{value.replace(/_/g, " ")}</span>;
+  if (value === null || value === undefined || value === "")
+    return <span className="muted">—</span>;
+  return <span className={`badge ${BADGE[value] || "b-grey"}`}>{String(value).replace(/_/g, " ")}</span>;
 }
 
-export function Panel({ title, children, right }) {
+export function Panel({ title, children, hint }) {
   return (
     <div className="panel">
-      {(title || right) && (
-        <div style={{ display: "flex", alignItems: "center" }}>
-          {title && <h2 style={{ flex: 1 }}>{title}</h2>}
-          {right}
-        </div>
+      {title && (
+        <h2>
+          <span className="accent-bar" />
+          {title}
+          {hint && <span className="hint">{hint}</span>}
+        </h2>
       )}
       {children}
     </div>
   );
 }
 
-// Horizontal bar chart from [{label, value}].
-export function BarChart({ data, valueFormat = fmtNum, color }) {
-  const max = Math.max(1, ...data.map((d) => d.value || 0));
-  if (!data.length) return <div className="muted">No data.</div>;
-  return (
-    <div>
-      {data.map((d, i) => (
-        <div className="bar-row" key={i}>
-          <div className="bar-label" title={d.label}>
-            {d.label}
-          </div>
-          <div className="bar-track">
-            <div
-              className="bar-fill"
-              style={{
-                width: `${((d.value || 0) / max) * 100}%`,
-                background: color || undefined,
-              }}
-            />
-          </div>
-          <div className="bar-value">{valueFormat(d.value)}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function DataTable({ columns, rows }) {
-  if (!rows || !rows.length) {
-    return <div className="muted" style={{ padding: "12px 0" }}>No rows.</div>;
-  }
+  if (!rows || !rows.length)
+    return <div className="empty">No rows.</div>;
   return (
     <div className="table-wrap">
       <table>
         <thead>
           <tr>
             {columns.map((c) => (
-              <th key={c.key} className={c.num ? "num" : ""}>
-                {c.label}
-              </th>
+              <th key={c.key} className={c.num ? "num" : ""}>{c.label}</th>
             ))}
           </tr>
         </thead>
@@ -95,13 +88,28 @@ export function DataTable({ columns, rows }) {
             <tr key={i}>
               {columns.map((c) => (
                 <td key={c.key} className={c.num ? "num" : ""}>
-                  {c.render ? c.render(r[c.key], r) : r[c.key] ?? "—"}
+                  {c.render ? c.render(r[c.key], r) : (r[c.key] ?? "—")}
                 </td>
               ))}
             </tr>
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+export function PageHeader({ title, subtitle, asOf, right }) {
+  return (
+    <div className="page-header">
+      <div>
+        <h1><span className="accent-bar" />{title}</h1>
+        {subtitle && <p>{subtitle}</p>}
+      </div>
+      <div className="controls">
+        {right}
+        {asOf && <span className="asof-chip">as of {asOf}</span>}
+      </div>
     </div>
   );
 }
@@ -114,9 +122,7 @@ export function ErrorState({ error }) {
   return (
     <div className="alert error">
       Could not load data: {String(error?.message || error)}
-      <div className="muted" style={{ marginTop: 6 }}>
-        Is the backend running on :8000?
-      </div>
+      <div className="muted" style={{ marginTop: 6 }}>Is the backend running on :8000?</div>
     </div>
   );
 }
@@ -127,13 +133,12 @@ export function EmptyState({ message }) {
       <div className="big">📭</div>
       <div>{message || "No data yet."}</div>
       <div className="muted" style={{ marginTop: 8 }}>
-        Go to <b>Data Ingestion</b> to upload dumps, or run the seed script.
+        Open <b>Data Ingestion</b> to upload dumps, or run the seed script.
       </div>
     </div>
   );
 }
 
-// Simple data-fetching hook.
 export function useApi(fn, deps = []) {
   const [state, setState] = React.useState({ loading: true, data: null, error: null });
   React.useEffect(() => {
@@ -142,9 +147,7 @@ export function useApi(fn, deps = []) {
     fn()
       .then((data) => alive && setState({ loading: false, data, error: null }))
       .catch((error) => alive && setState({ loading: false, data: null, error }));
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
   return state;
