@@ -171,8 +171,10 @@ Supported source types: `file`, `sqlserver`, `mysql`, `postgres`, `access`,
 | Overall SCM          | `GET /api/analytics/overview` | Cross-module executive dashboard + data freshness |
 
 **Global slicers:** most report endpoints accept `commodity` and `buyer` query
-params (options from `GET /api/meta/slicers`). The web app has a global filter
-bar under the top nav that applies these across every report page.
+params (options from `GET /api/meta/slicers`); the time-series endpoints
+(inventory-monitoring, vendor-receipts, movements) also accept a `start`/`end`
+date range. The web app has a global filter bar under the top nav — commodity,
+buyer and a date range — that applies across every report page.
 
 All accept an optional `as_of=YYYY-MM-DD` query parameter.
 

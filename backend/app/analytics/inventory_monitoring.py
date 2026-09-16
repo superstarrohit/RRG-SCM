@@ -16,8 +16,10 @@ from sqlalchemy.orm import Session
 
 def analyze(
     db: Session, *, as_of: date | None = None,
-    commodity: str | None = None, buyer: str | None = None, top_n: int = 12,
+    commodity: str | None = None, buyer: str | None = None,
+    start: str | None = None, end: str | None = None, top_n: int = 12,
 ) -> dict:
+    from app.analytics.common import filter_dates
     snaps = load_df(db, "inventory_snapshots")
     materials = load_df(db, "materials")
 
@@ -29,6 +31,9 @@ def analyze(
     snaps["value"] = pd.to_numeric(snaps["value"], errors="coerce").fillna(0.0)
     snaps["snapshot_date"] = pd.to_datetime(snaps["snapshot_date"], errors="coerce")
     snaps = snaps[snaps["snapshot_date"].notna()]
+    snaps = filter_dates(snaps, "snapshot_date", start, end)
+    if snaps.empty:
+        return _empty(as_of)
 
     if not materials.empty:
         m = materials[["material_code", "commodity", "buyer", "description"]].copy()

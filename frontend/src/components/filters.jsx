@@ -11,6 +11,8 @@ const save = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.rem
 export function FiltersProvider({ children }) {
   const [commodity, setCommodity] = React.useState(() => load("scm.commodity"));
   const [buyer, setBuyer] = React.useState(() => load("scm.buyer"));
+  const [start, setStart] = React.useState(() => load("scm.start"));
+  const [end, setEnd] = React.useState(() => load("scm.end"));
   const [options, setOptions] = React.useState({ commodity: [], buyer: [] });
 
   React.useEffect(() => {
@@ -18,17 +20,22 @@ export function FiltersProvider({ children }) {
   }, []);
   React.useEffect(() => save("scm.commodity", commodity), [commodity]);
   React.useEffect(() => save("scm.buyer", buyer), [buyer]);
+  React.useEffect(() => save("scm.start", start), [start]);
+  React.useEffect(() => save("scm.end", end), [end]);
 
   // Only send non-empty params.
   const params = {};
   if (commodity) params.commodity = commodity;
   if (buyer) params.buyer = buyer;
+  if (start) params.start = start;
+  if (end) params.end = end;
 
   const value = {
-    commodity, buyer, setCommodity, setBuyer, options, setOptions, params,
-    active: !!(commodity || buyer),
-    key: `${commodity}|${buyer}`, // handy for effect deps
-    clear: () => { setCommodity(""); setBuyer(""); },
+    commodity, buyer, start, end,
+    setCommodity, setBuyer, setStart, setEnd, options, setOptions, params,
+    active: !!(commodity || buyer || start || end),
+    key: `${commodity}|${buyer}|${start}|${end}`, // effect deps
+    clear: () => { setCommodity(""); setBuyer(""); setStart(""); setEnd(""); },
   };
   return <FiltersContext.Provider value={value}>{children}</FiltersContext.Provider>;
 }
@@ -52,6 +59,12 @@ export function FilterBar() {
         <option value="">All buyers</option>
         {f.options.buyer.map((b) => <option key={b} value={b}>{b}</option>)}
       </select>
+      <span className="fb-date" title="Date range (time-series pages)">
+        <Icon name="clock" size={13} />
+        <input type="date" value={f.start} onChange={(e) => f.setStart(e.target.value)} aria-label="From date" />
+        <span className="fb-dash">→</span>
+        <input type="date" value={f.end} onChange={(e) => f.setEnd(e.target.value)} aria-label="To date" />
+      </span>
       {f.active && (
         <button className="btn ghost" onClick={f.clear} style={{ padding: "7px 12px", fontSize: 12.5 }}>
           <Icon name="x" size={14} /> Clear

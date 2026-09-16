@@ -104,3 +104,16 @@ def filter_options(materials: pd.DataFrame, commodity=None, buyer=None) -> dict:
         return sorted(materials[col].dropna().unique().tolist()) if (not materials.empty and col in materials) else []
     return {"commodity": opts("commodity"), "buyer": opts("buyer"),
             "selected": {"commodity": commodity, "buyer": buyer}}
+
+
+def filter_dates(df: pd.DataFrame, col: str, start=None, end=None) -> pd.DataFrame:
+    """Restrict a frame to rows whose ``col`` falls within [start, end]."""
+    if df.empty or col not in df or (not start and not end):
+        return df
+    s = pd.to_datetime(df[col], errors="coerce")
+    mask = s.notna()
+    if start:
+        mask &= s >= pd.Timestamp(start)
+    if end:
+        mask &= s <= pd.Timestamp(end)
+    return df[mask]

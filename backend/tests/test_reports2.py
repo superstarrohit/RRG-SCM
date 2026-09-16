@@ -69,3 +69,17 @@ def test_slicers_meta(client):
     _materials(client)
     d = client.get("/api/meta/slicers").json()
     assert "Metals" in d["commodity"] and "A" in d["buyer"]
+
+
+def test_date_range_filter(client):
+    _materials(client)
+    _up(client, "inventory_snapshots", pd.DataFrame({
+        "Material": ["M1", "M1", "M1"], "Location": ["W", "W", "W"],
+        "Date": ["2026-06-01", "2026-07-01", "2026-08-01"],
+        "Qty": [10, 20, 30], "Value": [100, 200, 300]}))
+    full = client.get("/api/analytics/inventory-monitoring").json()
+    assert len(full["timeline"]) == 3
+    win = client.get("/api/analytics/inventory-monitoring",
+                     params={"start": "2026-07-01", "end": "2026-07-31"}).json()
+    assert len(win["timeline"]) == 1
+    assert win["timeline"][0]["date"] == "2026-07-01"

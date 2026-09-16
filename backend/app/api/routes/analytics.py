@@ -107,32 +107,37 @@ def get_stock_monitoring(
 @router.get("/inventory-monitoring")
 def get_inventory_monitoring(
     as_of: str | None = Query(None),
-    commodity: str | None = Query(None),
-    buyer: str | None = Query(None),
     top_n: int = Query(12, ge=1, le=100),
+    start: str | None = Query(None),
+    end: str | None = Query(None),
+    f: dict = Depends(_slicers),
     db: Session = Depends(get_db),
 ) -> dict:
-    return inventory_monitoring.analyze(db, as_of=_as_of(as_of), commodity=commodity, buyer=buyer, top_n=top_n)
+    return inventory_monitoring.analyze(db, as_of=_as_of(as_of), top_n=top_n, start=start, end=end, **f)
 
 
 @router.get("/vendor-receipts")
 def get_vendor_receipts(
     as_of: str | None = Query(None),
     top_n: int = Query(12, ge=1, le=100),
+    start: str | None = Query(None),
+    end: str | None = Query(None),
     f: dict = Depends(_slicers),
     db: Session = Depends(get_db),
 ) -> dict:
-    return vendor_receipts.analyze(db, as_of=_as_of(as_of), top_n=top_n, **f)
+    return vendor_receipts.analyze(db, as_of=_as_of(as_of), top_n=top_n, start=start, end=end, **f)
 
 
 @router.get("/movements")
 def get_movements(
     as_of: str | None = Query(None),
     top_n: int = Query(20, ge=1, le=200),
+    start: str | None = Query(None),
+    end: str | None = Query(None),
     f: dict = Depends(_slicers),
     db: Session = Depends(get_db),
 ) -> dict:
-    return movements.analyze(db, as_of=_as_of(as_of), top_n=top_n, **f)
+    return movements.analyze(db, as_of=_as_of(as_of), top_n=top_n, start=start, end=end, **f)
 
 
 @router.get("/forecasting")

@@ -6,13 +6,14 @@ from datetime import date
 import pandas as pd
 
 from app.analytics.common import (
-    allowed_codes, filter_codes, filter_options, load_df, safe_round,
+    allowed_codes, filter_codes, filter_dates, filter_options, load_df, safe_round,
 )
 from sqlalchemy.orm import Session
 
 
 def analyze(db: Session, *, as_of: date | None = None,
-            commodity: str | None = None, buyer: str | None = None, top_n: int = 20) -> dict:
+            commodity: str | None = None, buyer: str | None = None,
+            start: str | None = None, end: str | None = None, top_n: int = 20) -> dict:
     mv = load_df(db, "movements")
     materials = load_df(db, "materials")
     opts = filter_options(materials, commodity, buyer)
@@ -28,6 +29,9 @@ def analyze(db: Session, *, as_of: date | None = None,
 
     codes = allowed_codes(materials, commodity, buyer)
     mv = filter_codes(mv, codes)
+    mv = filter_dates(mv, "movement_date", start, end)
+    if mv.empty:
+        return _empty(as_of, opts)
     if not materials.empty:
         mv = mv.merge(materials[["material_code", "description", "commodity", "buyer"]],
                       on="material_code", how="left", suffixes=("", "_m"))
