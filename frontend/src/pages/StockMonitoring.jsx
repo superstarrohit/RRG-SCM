@@ -77,7 +77,7 @@ export default function StockMonitoring() {
             { key: "open_po", label: "Incoming", num: true, render: (v) => fmtNum(v) },
             { key: "demand", label: "Demand", num: true, render: (v) => fmtNum(v) },
             { key: "cover_days", label: "Cover (d)", num: true, render: (v) => v == null ? "—" : fmtNum(v, 1) },
-            { key: "status", label: "Status", render: (v) => <Badge value={STATUS_BADGE[v] || v} /> },
+            { key: "status", label: "Status", render: (v) => <Badge value={STATUS_BADGE[v]} label={v} /> },
           ]}
           rows={data.risk_items}
         />

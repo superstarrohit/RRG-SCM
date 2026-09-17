@@ -2,9 +2,11 @@
 
 A Python + React application for **SCM analytics, material planning, sourcing,
 costing and finished-goods planning**. Users upload their daily dumps — stocks,
-open POs, receipts, warehouse stock, BOMs, demand — from **Excel, CSV, SQL
-Server, MySQL / MySQL Workbench, PostgreSQL, MS Access or generic ODBC**, and the
-app does the analysis.
+open POs, receipts, warehouse stock, BOMs, demand — from **Excel, CSV, JSON,
+SQL Server, MySQL / MySQL Workbench, PostgreSQL, MS Access, generic ODBC, SAP
+HANA (live) / SAP ERP-BW, or KNIME (via its ODBC/JDBC bridge)**, and the app
+does the analysis. Values are shown in **₹ (INR)**, matching an India-based
+operation.
 
 > **Status:** Foundation + the **Incoming Materials Analysis** module built
 > end-to-end. Material Planning (MRP), Sourcing, Costing, FG Planning and the
@@ -145,12 +147,17 @@ source. Install what you need:
 ```bash
 pip install psycopg2-binary   # PostgreSQL
 pip install PyMySQL           # MySQL / MySQL Workbench
-pip install pyodbc            # SQL Server, MS Access, generic ODBC, SAP (ODBC)
-pip install sqlalchemy-hana hdbcli   # SAP HANA
+pip install pyodbc            # SQL Server, MS Access, generic ODBC, SAP (ODBC), KNIME
+pip install sqlalchemy-hana hdbcli   # SAP HANA (Live)
 ```
 
-Supported source types: `file`, `sqlserver`, `mysql`, `postgres`, `access`,
-`odbc`, `sap_hana`, `sap_odbc`.
+Supported source types: `file` (Excel/CSV/JSON), `sqlserver`, `mysql`,
+`postgres`, `access`, `odbc`, `sap_hana`, `sap_odbc`, `knime`. All of these are
+**importable**; every staged dataset is **exportable** back out as
+Excel/CSV/JSON via `GET /api/data/{ds}/export`. KNIME has no native database
+wire protocol, so it's reached the same way SAP's ERP/BW is: through an
+ODBC/JDBC bridge DSN that a KNIME Server workflow publishes its output table
+to.
 
 ---
 
@@ -170,11 +177,21 @@ Supported source types: `file`, `sqlserver`, `mysql`, `postgres`, `access`,
 | Forecasting          | `GET /api/analytics/forecasting` | Rolling M1/M2/M3 forecast vs current supply (stock + incoming); coverage gaps |
 | Overall SCM          | `GET /api/analytics/overview` | Cross-module executive dashboard + data freshness |
 
-**Global slicers:** most report endpoints accept `commodity` and `buyer` query
-params (options from `GET /api/meta/slicers`); the time-series endpoints
-(inventory-monitoring, vendor-receipts, movements) also accept a `start`/`end`
-date range. The web app has a global filter bar under the top nav — commodity,
-buyer and a date range — that applies across every report page.
+**Global slicers:** every report endpoint accepts `commodity`, `buyer`,
+`material`, `supplier`, `location` and a free-text `q` query param (options
+from `GET /api/meta/slicers`, which also returns the distinct warehouse/site
+`location` values from Warehouse Stock and Inventory Snapshots). `location`
+sources on-hand quantities from that warehouse instead of the company-wide
+total, so it genuinely changes stock-based figures (Stock Monitoring, FG
+Planning, Forecasting, Overview). `q` does a case-insensitive substring search
+across each page's key text columns (material, description, PO number,
+supplier, etc.), matching the reference report's per-page search boxes. The
+time-series endpoints (inventory-monitoring, vendor-receipts, movements) also
+accept a `start`/`end` date range. Movements additionally accepts `mvt_type`
+— a page-specific slicer (the reference report's "Mvt Master") rather than a
+global one. The web app's global filter bar under the top nav covers
+commodity/buyer/material/supplier/location/search/date-range across every
+report page; the Movements page adds its own Movement Type dropdown.
 
 All accept an optional `as_of=YYYY-MM-DD` query parameter.
 

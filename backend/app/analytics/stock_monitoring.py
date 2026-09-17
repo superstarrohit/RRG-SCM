@@ -11,7 +11,7 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from app.analytics.common import load_df, safe_round, today
+from app.analytics.common import load_df, safe_round, stock_by_material, today
 from sqlalchemy.orm import Session
 
 STATUS_ORDER = ["stockout", "critical", "low", "healthy", "overstock"]
@@ -24,11 +24,13 @@ STATUS_LABEL = {
 def analyze(
     db: Session, *, as_of: date | None = None,
     commodity: str | None = None, buyer: str | None = None,
-    material: str | None = None, supplier: str | None = None, top_n: int = 25,
+    material: str | None = None, supplier: str | None = None,
+    location: str | None = None, q: str | None = None, top_n: int = 25,
 ) -> dict:
-    from app.analytics.common import filter_supplier
+    from app.analytics.common import apply_search, filter_supplier
     materials = load_df(db, "materials")
     stock = load_df(db, "stock")
+    warehouse_stock = load_df(db, "warehouse_stock")
     pos = load_df(db, "open_pos")
     demand = load_df(db, "demand")
     now = today(as_of)
@@ -53,8 +55,11 @@ def analyze(
         base = base[base["buyer"] == buyer]
     if material:
         base = base[base["material_code"] == material]
+    base = apply_search(base, q, ["material_code", "description"])
 
-    base["sap_stock"] = base["material_code"].map(_sum(stock, "material_code", "qty_on_hand")).fillna(0.0)
+    # A Location selection sources stock from that warehouse instead of the
+    # company-wide total, so the slicer genuinely changes the figures.
+    base["sap_stock"] = base["material_code"].map(stock_by_material(stock, warehouse_stock, location)).fillna(0.0)
     base["open_po"] = base["material_code"].map(_open_po(pos)).fillna(0.0)
     base["demand"] = base["material_code"].map(_sum(demand, "material_code", "qty")).fillna(0.0)
     base["projected"] = base["sap_stock"] + base["open_po"] - base["demand"]
@@ -93,12 +98,13 @@ def analyze(
     ]
 
     risk = base[base["at_risk"]].sort_values(["status", "stock_value"], ascending=[True, False])
-    from app.analytics.common import filter_options
+    from app.analytics.common import filter_options, location_options
     return {
         "as_of": (as_of or date.today()).isoformat(),
         "empty": False,
-        "filters": filter_options(materials, commodity, buyer, material, supplier,
-                                  suppliers=load_df(db, "suppliers")),
+        "filters": filter_options(materials, commodity, buyer, material, supplier, location,
+                                  suppliers=load_df(db, "suppliers"),
+                                  locations=location_options(warehouse_stock)),
         "kpis": kpis,
         "status_distribution": dist,
         "risk_items": _rows(risk.head(top_n)),
@@ -151,8 +157,8 @@ def _empty(as_of):
     return {
         "as_of": (as_of or date.today()).isoformat(), "empty": True,
         "message": "Load material master (with safety/refill/max levels) and stock to monitor stock health.",
-        "filters": {"commodity": [], "buyer": [], "material": [], "supplier": [],
-                   "selected": {"commodity": None, "buyer": None, "material": None, "supplier": None}},
+        "filters": {"commodity": [], "buyer": [], "material": [], "supplier": [], "location": [],
+                   "selected": {"commodity": None, "buyer": None, "material": None, "supplier": None, "location": None}},
         "kpis": {"materials": 0, "stockout": 0, "critical": 0, "low": 0, "overstock": 0, "at_risk": 0, "stock_value": 0.0},
         "status_distribution": [], "risk_items": [], "all_items": [],
     }

@@ -21,8 +21,9 @@ DB_SOURCE_TYPES: dict[str, dict[str, str]] = {
     "postgres": {"label": "PostgreSQL", "driver": "psycopg2-binary"},
     "access": {"label": "Microsoft Access", "driver": "pyodbc"},
     "odbc": {"label": "Generic ODBC (DSN)", "driver": "pyodbc"},
-    "sap_hana": {"label": "SAP HANA", "driver": "sqlalchemy-hana hdbcli"},
+    "sap_hana": {"label": "SAP HANA (Live)", "driver": "sqlalchemy-hana hdbcli"},
     "sap_odbc": {"label": "SAP (ERP/BW via ODBC/DSN)", "driver": "pyodbc"},
+    "knime": {"label": "KNIME Server (JDBC/ODBC bridge)", "driver": "pyodbc"},
 }
 
 
@@ -93,6 +94,17 @@ def build_url(cfg: DBConnectionConfig) -> str:
         )
         return f"mssql+pyodbc:///?odbc_connect={conn}"
 
+    if st == "knime":
+        # KNIME has no native DB wire protocol; a KNIME Server workflow exposes
+        # its output table through a configured ODBC DSN (or a JDBC-ODBC
+        # bridge DSN), which we connect to the same way as generic ODBC.
+        if not cfg.dsn:
+            raise ConnectorError("KNIME source requires a configured 'dsn'.")
+        conn = quote_plus(
+            f"DSN={cfg.dsn};UID={cfg.username or ''};PWD={cfg.password or ''};"
+        )
+        return f"mssql+pyodbc:///?odbc_connect={conn}"
+
     if st == "odbc":
         if cfg.dsn:
             conn = quote_plus(f"DSN={cfg.dsn};UID={cfg.username or ''};PWD={cfg.password or ''}")
@@ -140,7 +152,7 @@ class SQLConnector(Connector):
         table = self.table or ""
         if not all(c.isalnum() or c in "_.[]\"" for c in table):
             raise ConnectorError(f"Invalid table name '{table}'.")
-        top = f"TOP {int(self.limit)} " if self.limit and self.source_type in {"sqlserver", "access", "odbc", "sap_odbc"} else ""
+        top = f"TOP {int(self.limit)} " if self.limit and self.source_type in {"sqlserver", "access", "odbc", "sap_odbc", "knime"} else ""
         tail = f" LIMIT {int(self.limit)}" if self.limit and self.source_type in {"postgres", "mysql", "sap_hana"} else ""
         return f"SELECT {top}* FROM {table}{tail}"
 

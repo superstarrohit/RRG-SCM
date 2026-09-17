@@ -6,7 +6,8 @@ from datetime import date
 import pandas as pd
 
 from app.analytics.common import (
-    allowed_codes, filter_codes, filter_dates, filter_options, filter_supplier, load_df, safe_round,
+    allowed_codes, apply_search, filter_codes, filter_dates, filter_options,
+    filter_supplier, load_df, safe_round,
 )
 from sqlalchemy.orm import Session
 
@@ -14,11 +15,12 @@ from sqlalchemy.orm import Session
 def analyze(db: Session, *, as_of: date | None = None,
             commodity: str | None = None, buyer: str | None = None,
             material: str | None = None, supplier: str | None = None,
+            location: str | None = None, q: str | None = None,
             start: str | None = None, end: str | None = None, top_n: int = 12) -> dict:
     receipts = load_df(db, "receipts")
     materials = load_df(db, "materials")
     suppliers = load_df(db, "suppliers")
-    opts = filter_options(materials, commodity, buyer, material, supplier, suppliers=suppliers)
+    opts = filter_options(materials, commodity, buyer, material, supplier, location, suppliers=suppliers)
 
     if receipts.empty:
         return _empty(as_of, opts)
@@ -33,6 +35,9 @@ def analyze(db: Session, *, as_of: date | None = None,
     r = filter_codes(r, codes)
     r = filter_supplier(r, supplier)
     r = filter_dates(r, "receipt_date", start, end)
+    r = apply_search(r, q, ["material_code", "po_number", "receipt_id", "supplier_code"])
+    # Receipts aren't location-tagged in this schema — Location is accepted
+    # for consistency with the global filter bar but doesn't narrow this page.
     if r.empty:
         return _empty(as_of, opts)
     if not materials.empty:

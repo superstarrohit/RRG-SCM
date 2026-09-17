@@ -13,12 +13,13 @@ import numpy as np
 import pandas as pd
 
 from app.analytics.common import (
-    abc_classify, allowed_codes, filter_codes, filter_supplier, load_df, safe_round, today,
+    abc_classify, allowed_codes, apply_search, filter_codes, filter_supplier,
+    load_df, safe_round, today,
 )
 from sqlalchemy.orm import Session
 
 
-def _prepare(db, as_of, commodity=None, buyer=None, material=None, supplier=None):
+def _prepare(db, as_of, commodity=None, buyer=None, material=None, supplier=None, q=None):
     pos = load_df(db, "open_pos")
     now = today(as_of)
     if pos.empty:
@@ -71,6 +72,7 @@ def _prepare(db, as_of, commodity=None, buyer=None, material=None, supplier=None
 
     # Keep only lines that still have something open.
     pos = pos[pos["open_qty"] > 0].copy()
+    pos = apply_search(pos, q, ["material_code", "description", "po_number", "supplier_code", "supplier_name"])
     return pos, now
 
 
@@ -103,11 +105,16 @@ def analyze(
     buyer: str | None = None,
     material: str | None = None,
     supplier: str | None = None,
+    location: str | None = None,
+    q: str | None = None,
 ) -> dict:
     from app.analytics.common import filter_options
-    opts = filter_options(load_df(db, "materials"), commodity, buyer, material, supplier,
+    opts = filter_options(load_df(db, "materials"), commodity, buyer, material, supplier, location,
                           suppliers=load_df(db, "suppliers"))
-    pos, now = _prepare(db, as_of, commodity, buyer, material, supplier)
+    # Open POs aren't location-tagged in this schema, so the Location slicer
+    # doesn't narrow this particular page — it's still accepted for API
+    # consistency with the rest of the global filter bar.
+    pos, now = _prepare(db, as_of, commodity, buyer, material, supplier, q)
 
     if pos.empty:
         return {

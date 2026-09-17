@@ -10,7 +10,9 @@ from datetime import date
 
 import pandas as pd
 
-from app.analytics.common import load_df, safe_round
+from app.analytics.common import (
+    allowed_codes, filter_options, load_df, safe_round, stock_by_material,
+)
 from sqlalchemy.orm import Session
 
 
@@ -26,15 +28,23 @@ def _explode(fg: str, qty: float, bom: dict, seen: set, acc: dict) -> None:
             acc[comp] = acc.get(comp, 0.0) + req
 
 
-def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25) -> dict:
+def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25,
+            commodity: str | None = None, buyer: str | None = None,
+            material: str | None = None, supplier: str | None = None,
+            location: str | None = None, q: str | None = None) -> dict:
     plan = load_df(db, "production_plan")
     bom = load_df(db, "bom")
     stock = load_df(db, "stock")
+    warehouse_stock = load_df(db, "warehouse_stock")
     pos = load_df(db, "open_pos")
     materials = load_df(db, "materials")
+    opts = filter_options(materials, commodity, buyer, material, supplier, location,
+                          suppliers=load_df(db, "suppliers"))
+    # Supplier doesn't apply to the production plan itself (no such dimension
+    # on a finished-goods plan) — accepted for consistency with the bar.
 
     if plan.empty or bom.empty:
-        return _empty(as_of)
+        return {**_empty(as_of), "filters": opts}
 
     bom["qty_per"] = pd.to_numeric(bom["qty_per"], errors="coerce").fillna(1.0)
     bom["scrap_pct"] = pd.to_numeric(bom["scrap_pct"], errors="coerce").fillna(0.0)
@@ -47,13 +57,25 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25) -> dict:
     plan["planned_qty"] = pd.to_numeric(plan["planned_qty"], errors="coerce").fillna(0)
     plan_by_fg = plan.groupby("material_code")["planned_qty"].sum()
 
-    # Component gross requirements across the whole plan.
+    fg_codes = allowed_codes(materials, commodity, buyer, material)
+    if fg_codes is not None:
+        plan_by_fg = plan_by_fg[plan_by_fg.index.isin(fg_codes)]
+    if q:
+        q_low = q.strip().lower()
+        desc_map = materials.set_index("material_code")["description"].to_dict() if not materials.empty else {}
+        plan_by_fg = plan_by_fg[[
+            q_low in str(fg).lower() or q_low in str(desc_map.get(fg) or "").lower()
+            for fg in plan_by_fg.index
+        ]]
+
+    # Component gross requirements across the (filtered) plan.
     gross: dict[str, float] = {}
     for fg, qty in plan_by_fg.items():
         _explode(fg, float(qty), bom_map, set(), gross)
 
-    # Availability per component.
-    on_hand = _sum_map(stock, "material_code", "qty_on_hand")
+    # Availability per component — a Location selection sources on-hand from
+    # that warehouse instead of the company-wide total.
+    on_hand = stock_by_material(stock, warehouse_stock, location)
     incoming = _incoming_map(pos)
     desc = {}
     if not materials.empty:
@@ -105,18 +127,11 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25) -> dict:
     return {
         "as_of": (as_of or date.today()).isoformat(),
         "empty": False,
+        "filters": opts,
         "kpis": kpis,
         "fg_feasibility": fg_rows[:top_n],
         "component_requirements": component_rows[:top_n],
     }
-
-
-def _sum_map(df: pd.DataFrame, key: str, val: str) -> dict:
-    if df.empty or val not in df:
-        return {}
-    df = df.copy()
-    df[val] = pd.to_numeric(df[val], errors="coerce").fillna(0)
-    return df.groupby(key)[val].sum().to_dict()
 
 
 def _incoming_map(pos: pd.DataFrame) -> dict:
@@ -136,6 +151,8 @@ def _empty(as_of: date | None) -> dict:
         "as_of": (as_of or date.today()).isoformat(),
         "empty": True,
         "message": "Load a production plan and BOM to run finished-goods planning.",
+        "filters": {"commodity": [], "buyer": [], "material": [], "supplier": [], "location": [],
+                   "selected": {"commodity": None, "buyer": None, "material": None, "supplier": None, "location": None}},
         "kpis": {"fg_planned": 0, "fg_at_risk": 0, "components_required": 0, "components_short": 0},
         "fg_feasibility": [],
         "component_requirements": [],

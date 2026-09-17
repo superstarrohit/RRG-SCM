@@ -18,9 +18,10 @@ def analyze(
     db: Session, *, as_of: date | None = None,
     commodity: str | None = None, buyer: str | None = None,
     material: str | None = None, supplier: str | None = None,
+    location: str | None = None, q: str | None = None,
     start: str | None = None, end: str | None = None, top_n: int = 12,
 ) -> dict:
-    from app.analytics.common import filter_dates
+    from app.analytics.common import apply_search, filter_dates, location_options
     snaps = load_df(db, "inventory_snapshots")
     materials = load_df(db, "materials")
 
@@ -47,13 +48,17 @@ def analyze(
         snaps[c] = snaps[c].fillna("Unassigned")
 
     from app.analytics.common import filter_options
-    filters = filter_options(materials, commodity, buyer, material, supplier)
+    filters = filter_options(materials, commodity, buyer, material, supplier, location,
+                             locations=location_options(snaps))
     if commodity:
         snaps = snaps[snaps["commodity"] == commodity]
     if buyer:
         snaps = snaps[snaps["buyer"] == buyer]
     if material:
         snaps = snaps[snaps["material_code"] == material]
+    if location and "location" in snaps:
+        snaps = snaps[snaps["location"] == location]
+    snaps = apply_search(snaps, q, ["material_code", "description"])
     if snaps.empty:
         return _empty(as_of)
 
@@ -109,8 +114,8 @@ def _empty(as_of):
     return {
         "as_of": (as_of or date.today()).isoformat(), "empty": True,
         "message": "Load the Inventory History dump (dated stock snapshots) to see inventory trends.",
-        "filters": {"commodity": [], "buyer": [], "material": [], "supplier": [],
-                   "selected": {"commodity": None, "buyer": None, "material": None, "supplier": None}},
+        "filters": {"commodity": [], "buyer": [], "material": [], "supplier": [], "location": [],
+                   "selected": {"commodity": None, "buyer": None, "material": None, "supplier": None, "location": None}},
         "kpis": {"inventory_value": 0.0, "inventory_qty": 0.0, "materials": 0, "locations": 0, "commodities": 0, "mom_change_pct": 0.0, "as_of_snapshot": None},
         "timeline": [], "by_commodity": [], "by_location": [], "by_buyer": [],
     }

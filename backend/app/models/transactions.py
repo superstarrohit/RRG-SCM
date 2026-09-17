@@ -53,7 +53,7 @@ class PurchaseOrder(Base, TimestampMixin):
     received_qty: Mapped[float] = mapped_column(Float, default=0.0)
     open_qty: Mapped[float] = mapped_column(Float, default=0.0)
     unit_price: Mapped[float] = mapped_column(Float, default=0.0)
-    currency: Mapped[str | None] = mapped_column(String(8), default="USD")
+    currency: Mapped[str | None] = mapped_column(String(8), default="INR")
 
     order_date: Mapped[date | None] = mapped_column(Date, index=True)
     expected_date: Mapped[date | None] = mapped_column(Date, index=True)

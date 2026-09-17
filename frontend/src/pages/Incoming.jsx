@@ -62,7 +62,7 @@ export default function Incoming() {
           </div>
         </Panel>
         <Panel title="Expected Arrivals Timeline" hint="value / week">
-          <LineChart data={arrivals} valueFormat={(v) => "$" + fmtNum(v / 1000) + "k"} color={PALETTE.cyan} />
+          <LineChart data={arrivals} valueFormat={(v) => "₹" + fmtNum(v / 1000) + "k"} color={PALETTE.cyan} />
         </Panel>
       </div>
 
@@ -84,7 +84,7 @@ export default function Incoming() {
 
       <div className="panel-grid">
         <Panel title="Incoming by Supplier">
-          <VBars data={supplierBars} valueFormat={(v) => "$" + fmtNum(v / 1000) + "k"} color={PALETTE.purple} />
+          <VBars data={supplierBars} valueFormat={(v) => "₹" + fmtNum(v / 1000) + "k"} color={PALETTE.purple} />
         </Panel>
         <Panel title="Incoming by Category">
           <DataTable

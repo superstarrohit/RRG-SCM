@@ -51,6 +51,7 @@ const P = {
   flow: "M4 6h10M4 6l3-3M4 6l3 3M20 12H10M20 12l-3-3M20 12l-3 3M16 18H6M6 18l3-3M6 18l3 3",
   receipt: "M4 2v20l3-2 3 2 3-2 3 2 3-2V2l-3 2-3-2-3 2-3-2zM8 8h8M8 12h8M8 16h5",
   chevronDown: "M6 9l6 6 6-6",
+  knime: "M12 2l3 5-3 5-3-5zM4 9l3 5-3 5-3-5zM20 9l3 5-3 5-3-5zM12 12l3 5-3 5-3-5z",
 };
 
 export default function Icon({ name, size, className }) {

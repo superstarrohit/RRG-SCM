@@ -35,7 +35,7 @@ export default function Costing() {
       </div>
 
       <Panel title="Rolled-Up Cost by Finished Good">
-        <VBars data={costBars} valueFormat={(v) => "$" + fmtNum(v)} color={PALETTE.blue} />
+        <VBars data={costBars} valueFormat={(v) => "₹" + fmtNum(v)} color={PALETTE.blue} />
       </Panel>
 
       <Panel title="BOM Cost Roll-Up">

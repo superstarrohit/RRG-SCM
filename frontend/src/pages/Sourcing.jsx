@@ -39,7 +39,7 @@ export default function Sourcing() {
 
       <div className="panel-grid">
         <Panel title="Supplier Spend" hint="open committed value">
-          <VBars data={spendBars} valueFormat={(v) => "$" + fmtNum(v / 1000) + "k"} color={PALETTE.purple} />
+          <VBars data={spendBars} valueFormat={(v) => "₹" + fmtNum(v / 1000) + "k"} color={PALETTE.purple} />
         </Panel>
         <Panel title="On-Time Delivery (OTIF)">
           <DataTable

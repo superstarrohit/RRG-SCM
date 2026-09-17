@@ -7,19 +7,22 @@ import numpy as np
 import pandas as pd
 
 from app.analytics.common import (
-    allowed_codes, filter_codes, filter_options, load_df, safe_round,
+    allowed_codes, apply_search, filter_codes, filter_options, load_df, safe_round,
+    stock_by_material,
 )
 from sqlalchemy.orm import Session
 
 
 def analyze(db: Session, *, as_of: date | None = None,
             commodity: str | None = None, buyer: str | None = None,
-            material: str | None = None, supplier: str | None = None, top_n: int = 30) -> dict:
+            material: str | None = None, supplier: str | None = None,
+            location: str | None = None, q: str | None = None, top_n: int = 30) -> dict:
     fc = load_df(db, "forecast")
     materials = load_df(db, "materials")
     stock = load_df(db, "stock")
+    warehouse_stock = load_df(db, "warehouse_stock")
     pos = load_df(db, "open_pos")
-    opts = filter_options(materials, commodity, buyer, material, supplier,
+    opts = filter_options(materials, commodity, buyer, material, supplier, location,
                           suppliers=load_df(db, "suppliers"))
 
     if fc.empty:
@@ -41,8 +44,9 @@ def analyze(db: Session, *, as_of: date | None = None,
             fc[c] = "Unassigned"
         fc[c] = fc[c].fillna("Unassigned")
     fc["unit_cost"] = pd.to_numeric(fc.get("unit_cost"), errors="coerce").fillna(0.0)
+    fc = apply_search(fc, q, ["material_code", "description"])
 
-    fc["stock"] = fc["material_code"].map(_sum(stock, "qty_on_hand")).fillna(0.0)
+    fc["stock"] = fc["material_code"].map(stock_by_material(stock, warehouse_stock, location)).fillna(0.0)
     fc["incoming"] = fc["material_code"].map(_open_po(pos)).fillna(0.0)
     fc["available"] = fc["stock"] + fc["incoming"]
     fc["gap_3m"] = (fc["total_3m"] - fc["available"]).clip(lower=0)
@@ -78,14 +82,6 @@ def analyze(db: Session, *, as_of: date | None = None,
             "total_3m": safe_round(r["total_3m"]), "gap_3m": safe_round(r["gap_3m"]), "status": r["status"],
         } for _, r in rows.iterrows()],
     }
-
-
-def _sum(df, val):
-    if df.empty or val not in df:
-        return {}
-    df = df.copy()
-    df[val] = pd.to_numeric(df[val], errors="coerce").fillna(0)
-    return df.groupby("material_code")[val].sum().to_dict()
 
 
 def _open_po(pos):

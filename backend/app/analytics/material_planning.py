@@ -10,32 +10,36 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from app.analytics.common import load_df, safe_round, today
+from app.analytics.common import load_df, safe_round, stock_by_material, today
 from sqlalchemy.orm import Session
 
 
 def analyze(db: Session, *, as_of: date | None = None, top_n: int = 20,
             commodity: str | None = None, buyer: str | None = None,
-            material: str | None = None, supplier: str | None = None) -> dict:
-    from app.analytics.common import allowed_codes, filter_codes, filter_options, filter_supplier
+            material: str | None = None, supplier: str | None = None,
+            location: str | None = None, q: str | None = None) -> dict:
+    from app.analytics.common import allowed_codes, apply_search, filter_codes, filter_options, filter_supplier, location_options
     materials = load_df(db, "materials")
     stock = load_df(db, "stock")
+    warehouse_stock = load_df(db, "warehouse_stock")
     pos = load_df(db, "open_pos")
     demand = load_df(db, "demand")
     now = today(as_of)
-    opts = filter_options(materials, commodity, buyer, material, supplier,
-                          suppliers=load_df(db, "suppliers"))
+    opts = filter_options(materials, commodity, buyer, material, supplier, location,
+                          suppliers=load_df(db, "suppliers"),
+                          locations=location_options(warehouse_stock))
 
     if materials.empty and stock.empty and demand.empty:
         return {**_empty(as_of), "filters": opts}
 
+    materials_loaded = not materials.empty  # before filtering, to distinguish "no master" from "filtered to zero"
     codes = allowed_codes(materials, commodity, buyer, material)
-    materials = filter_codes(materials, codes)
+    materials = apply_search(filter_codes(materials, codes), q, ["material_code", "description"])
     stock = filter_codes(stock, codes)
     pos = filter_supplier(filter_codes(pos, codes), supplier)
     demand = filter_codes(demand, codes)
 
-    base = _material_base(materials, stock)
+    base = _material_base(materials, stock, warehouse_stock, location, materials_loaded)
 
     # Scheduled receipts (incoming open qty).
     if not pos.empty:
@@ -110,8 +114,10 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 20,
     }
 
 
-def _material_base(materials: pd.DataFrame, stock: pd.DataFrame) -> pd.DataFrame:
-    if not materials.empty:
+def _material_base(materials: pd.DataFrame, stock: pd.DataFrame,
+                    warehouse_stock: pd.DataFrame | None = None,
+                    location: str | None = None, materials_loaded: bool = True) -> pd.DataFrame:
+    if materials_loaded:
         base = materials[
             ["material_code", "description", "category", "unit_cost",
              "safety_stock", "reorder_point", "min_order_qty"]
@@ -126,11 +132,7 @@ def _material_base(materials: pd.DataFrame, stock: pd.DataFrame) -> pd.DataFrame
     for c in ["unit_cost", "safety_stock", "reorder_point", "min_order_qty"]:
         base[c] = pd.to_numeric(base[c], errors="coerce").fillna(0.0)
 
-    if not stock.empty:
-        stock["qty_on_hand"] = pd.to_numeric(stock["qty_on_hand"], errors="coerce").fillna(0)
-        on_hand = stock.groupby("material_code")["qty_on_hand"].sum()
-    else:
-        on_hand = pd.Series(dtype=float)
+    on_hand = stock_by_material(stock, warehouse_stock if warehouse_stock is not None else pd.DataFrame(), location)
     base["on_hand"] = base["material_code"].map(on_hand).fillna(0.0)
     return base
 

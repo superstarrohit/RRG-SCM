@@ -6,7 +6,7 @@ from datetime import date
 import pandas as pd
 
 from app.analytics.common import (
-    allowed_codes, filter_codes, filter_dates, filter_options, load_df, safe_round,
+    allowed_codes, apply_search, filter_codes, filter_dates, filter_options, load_df, safe_round,
 )
 from sqlalchemy.orm import Session
 
@@ -14,16 +14,22 @@ from sqlalchemy.orm import Session
 def analyze(db: Session, *, as_of: date | None = None,
             commodity: str | None = None, buyer: str | None = None,
             material: str | None = None, supplier: str | None = None,
+            location: str | None = None, q: str | None = None,
+            mvt_type: str | None = None,
             start: str | None = None, end: str | None = None, top_n: int = 20) -> dict:
-    mv = load_df(db, "movements")
+    mv_all = load_df(db, "movements")
     materials = load_df(db, "materials")
-    opts = filter_options(materials, commodity, buyer, material, supplier,
+    opts = filter_options(materials, commodity, buyer, material, supplier, location,
                           suppliers=load_df(db, "suppliers"))
+    # Movement type is a page-specific slicer (mirrors the reference report's
+    # "Mvt Master" slicer, which only appears on the Movements page).
+    opts["mvt_type"] = sorted(mv_all["mvt_type"].dropna().unique().tolist()) if not mv_all.empty and "mvt_type" in mv_all else []
+    opts["selected"]["mvt_type"] = mvt_type
 
-    if mv.empty:
+    if mv_all.empty:
         return _empty(as_of, opts)
 
-    mv = mv.copy()
+    mv = mv_all.copy()
     mv["qty"] = pd.to_numeric(mv["qty"], errors="coerce").fillna(0.0)
     mv["value"] = pd.to_numeric(mv["value"], errors="coerce").fillna(0.0)
     mv["movement_date"] = pd.to_datetime(mv["movement_date"], errors="coerce")
@@ -32,6 +38,9 @@ def analyze(db: Session, *, as_of: date | None = None,
     codes = allowed_codes(materials, commodity, buyer, material)
     mv = filter_codes(mv, codes)
     mv = filter_dates(mv, "movement_date", start, end)
+    if mvt_type:
+        mv = mv[mv["mvt_type"] == mvt_type]
+    mv = apply_search(mv, q, ["material_code", "description"])
     if mv.empty:
         return _empty(as_of, opts)
     if not materials.empty:

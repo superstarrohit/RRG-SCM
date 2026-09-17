@@ -324,6 +324,12 @@ function FileImport({ dumps, onDone }) {
 
   return (
     <Panel title="Import from File" hint=".xlsx · .xls · .csv · .tsv · .json">
+      <div className="connector-strip">
+        <span className="conn-chip on" style={{ cursor: "default" }}><Icon name="excel" size={16} /> Excel (.xlsx/.xls)</span>
+        <span className="conn-chip on" style={{ cursor: "default" }}><Icon name="csv" size={16} /> CSV / TSV</span>
+        <span className="conn-chip on" style={{ cursor: "default" }}><Icon name="json" size={16} /> JSON</span>
+        <span className="muted" style={{ marginLeft: 6, fontSize: 12.5 }}>Every dataset can be exported back to these formats — see Export below.</span>
+      </div>
       <div className="form-grid">
         <Field label="Target dataset" icon="database"><select value={dumpType} onChange={(e) => setDumpType(e.target.value)}>{dumps.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}</select></Field>
         <Field label="Load mode" icon="merge">
@@ -363,10 +369,10 @@ function DbImport({ dumps, sources, onDone }) {
   const doPreview = wrap(api.previewDb, (r) => setPreview(r));
   const doIngest = wrap(api.ingestDb, (r) => { setResult(r); onDone(); });
 
-  const st = cfg.source_type, isAccess = st === "access", isDsn = st === "odbc" || st === "sap_odbc", isHana = st === "sap_hana";
+  const st = cfg.source_type, isAccess = st === "access", isDsn = st === "odbc" || st === "sap_odbc" || st === "knime", isHana = st === "sap_hana";
 
   return (
-    <Panel title="Import from Database / Connector" hint="SQL Server · MySQL · PostgreSQL · MS Access · ODBC · SAP HANA">
+    <Panel title="Import from Database / Connector" hint="SQL Server · MySQL Workbench · PostgreSQL · MS Access · ODBC · SAP HANA (Live) · KNIME">
       <div className="connector-strip">
         {sources.map((s) => (
           <button key={s.key} className={`conn-chip ${st === s.key ? "on" : ""}`} onClick={() => set("source_type", s.key)}>
@@ -396,7 +402,7 @@ function DbImport({ dumps, sources, onDone }) {
           <Field label="Username" icon="key"><input value={cfg.username} onChange={(e) => set("username", e.target.value)} /></Field>
           <Field label="Password" icon="key"><input type="password" value={cfg.password} onChange={(e) => set("password", e.target.value)} /></Field>
         </>)}
-        {(st === "sqlserver" || st === "odbc" || st === "sap_odbc") && (
+        {(st === "sqlserver" || st === "odbc" || st === "sap_odbc" || st === "knime") && (
           <Field label="ODBC driver" icon="odbc"><input value={cfg.odbc_driver} onChange={(e) => set("odbc_driver", e.target.value)} placeholder="ODBC Driver 17 for SQL Server" /></Field>
         )}
         <Field label="Table" icon="columns"><input value={cfg.table} onChange={(e) => set("table", e.target.value)} placeholder="dbo.open_pos" /></Field>
@@ -519,5 +525,5 @@ function iconForDataset(k) {
   return ({ materials: "cube", suppliers: "handshake", stock: "box", warehouse_stock: "layers", open_pos: "truck", receipts: "clipboard", demand: "chart", bom: "layers", production_plan: "factory" }[k]) || "database";
 }
 function iconForSource(k) {
-  return ({ sqlserver: "server", mysql: "database", postgres: "database", access: "database", odbc: "odbc", sap_hana: "sap", sap_odbc: "sap" }[k]) || "server";
+  return ({ sqlserver: "server", mysql: "database", postgres: "database", access: "database", odbc: "odbc", sap_hana: "sap", sap_odbc: "sap", knime: "knime" }[k]) || "server";
 }

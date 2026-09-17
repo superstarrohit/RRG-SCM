@@ -54,20 +54,20 @@ export default function InventoryMonitoring() {
             <button className={!isVal ? "on" : ""} onClick={() => setMetric("qty")}>Quantity</button>
           </div>
         </div>
-        <LineChart data={line} valueFormat={isVal ? (v) => "$" + fmtNum(v / 1000) + "k" : (v) => fmtNum(v)} color={isVal ? PALETTE.cyan : PALETTE.green} />
+        <LineChart data={line} valueFormat={isVal ? (v) => "₹" + fmtNum(v / 1000) + "k" : (v) => fmtNum(v)} color={isVal ? PALETTE.cyan : PALETTE.green} />
       </Panel>
 
       <div className="panel-grid">
         <Panel title="Inventory Value by Commodity">
-          <VBars data={commBars} valueFormat={(v) => "$" + fmtNum(v / 1000) + "k"} color={PALETTE.purple} />
+          <VBars data={commBars} valueFormat={(v) => "₹" + fmtNum(v / 1000) + "k"} color={PALETTE.purple} />
         </Panel>
         <Panel title="Inventory Value by Location">
-          <VBars data={locBars} valueFormat={(v) => "$" + fmtNum(v / 1000) + "k"} color={PALETTE.blue} />
+          <VBars data={locBars} valueFormat={(v) => "₹" + fmtNum(v / 1000) + "k"} color={PALETTE.blue} />
         </Panel>
       </div>
 
       <Panel title="Inventory Value by Buyer">
-        <VBars data={buyerBars} valueFormat={(v) => "$" + fmtNum(v / 1000) + "k"} color={PALETTE.cyan} />
+        <VBars data={buyerBars} valueFormat={(v) => "₹" + fmtNum(v / 1000) + "k"} color={PALETTE.cyan} />
       </Panel>
     </div>
   );

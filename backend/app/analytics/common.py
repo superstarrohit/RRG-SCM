@@ -108,8 +108,85 @@ def filter_supplier(df: pd.DataFrame, supplier) -> pd.DataFrame:
     return df[df["supplier_code"] == supplier]
 
 
+def filter_location(df: pd.DataFrame, location) -> pd.DataFrame:
+    """Restrict a frame to one location/site (no-op if not given / no column).
+
+    "Location" is site/warehouse-level throughout the app: WarehouseStock's
+    ``warehouse_code`` (e.g. "WH-NORTH") and InventorySnapshot's ``location``
+    both operate at that granularity — WarehouseStock's own ``location``
+    field is a finer bin/shelf position and is not what the slicer means.
+    """
+    if not location or df.empty:
+        return df
+    col = "warehouse_code" if "warehouse_code" in df else "location" if "location" in df else None
+    if col is None:
+        return df
+    return df[df[col] == location]
+
+
+def apply_search(df: pd.DataFrame, q: str | None, columns: list[str]) -> pd.DataFrame:
+    """Free-text search across the given columns (case-insensitive substring),
+    matching the reference report's per-page search boxes.
+    """
+    if not q or df.empty:
+        return df
+    q_low = str(q).strip().lower()
+    if not q_low:
+        return df
+    cols = [c for c in columns if c in df]
+    if not cols:
+        return df
+    mask = pd.Series(False, index=df.index)
+    for c in cols:
+        mask = mask | df[c].astype(str).str.lower().str.contains(q_low, na=False, regex=False)
+    return df[mask]
+
+
+def stock_by_material(stock: pd.DataFrame, warehouse_stock: pd.DataFrame, location=None) -> dict:
+    """On-hand qty per material_code.
+
+    With no location selected, sums the company-wide Stock dump. With a
+    location (site/warehouse) selected, sources the number from Warehouse
+    Stock for that warehouse instead — so the Location slicer genuinely
+    changes the figures, matching the reference report's Location Master
+    filter. Matches on ``warehouse_code``, not WarehouseStock's finer-grained
+    bin-level ``location`` field.
+    """
+    if location and not warehouse_stock.empty and "warehouse_code" in warehouse_stock:
+        df = warehouse_stock[warehouse_stock["warehouse_code"] == location]
+        if "qty" in df:
+            df = df.copy()
+            df["qty"] = pd.to_numeric(df["qty"], errors="coerce").fillna(0.0)
+            return df.groupby("material_code")["qty"].sum().to_dict()
+        return {}
+    if stock.empty or "qty_on_hand" not in stock:
+        return {}
+    s = stock.copy()
+    s["qty_on_hand"] = pd.to_numeric(s["qty_on_hand"], errors="coerce").fillna(0.0)
+    return s.groupby("material_code")["qty_on_hand"].sum().to_dict()
+
+
+def location_options(*frames: pd.DataFrame) -> list[str]:
+    """Union of distinct site/warehouse values across one or more frames.
+
+    Prefers ``warehouse_code`` (WarehouseStock's site-level column) over the
+    plain ``location`` column, since the latter is bin/shelf-level on that
+    model but warehouse-level on InventorySnapshot — see filter_location().
+    """
+    vals: set[str] = set()
+    for df in frames:
+        if df.empty:
+            continue
+        col = "warehouse_code" if "warehouse_code" in df else "location" if "location" in df else None
+        if col:
+            vals |= set(df[col].dropna().unique().tolist())
+    return sorted(vals)
+
+
 def filter_options(materials: pd.DataFrame, commodity=None, buyer=None,
-                    material=None, supplier=None, suppliers: pd.DataFrame | None = None) -> dict:
+                    material=None, supplier=None, location=None,
+                    suppliers: pd.DataFrame | None = None,
+                    locations: list[str] | None = None) -> dict:
     """The slicer option lists + current selection, for the UI."""
     def opts(col, df=materials):
         return sorted(df[col].dropna().unique().tolist()) if (not df.empty and col in df) else []
@@ -132,7 +209,11 @@ def filter_options(materials: pd.DataFrame, commodity=None, buyer=None,
     return {
         "commodity": opts("commodity"), "buyer": opts("buyer"),
         "material": mat_opts, "supplier": sup_opts,
-        "selected": {"commodity": commodity, "buyer": buyer, "material": material, "supplier": supplier},
+        "location": locations or [],
+        "selected": {
+            "commodity": commodity, "buyer": buyer, "material": material,
+            "supplier": supplier, "location": location,
+        },
     }
 
 

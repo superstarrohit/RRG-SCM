@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import date
 
+import pandas as pd
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -11,32 +12,35 @@ from app.analytics import (
     material_planning,
     sourcing,
 )
-from app.analytics.common import load_df, safe_round
+from app.analytics.common import load_df, safe_round, stock_by_material
 from app.models import IngestionLog
 
 
 def analyze(db: Session, *, as_of: date | None = None,
             commodity: str | None = None, buyer: str | None = None,
-            material: str | None = None, supplier: str | None = None) -> dict:
-    from app.analytics.common import allowed_codes, filter_codes, filter_options
-    kw = {"commodity": commodity, "buyer": buyer, "material": material, "supplier": supplier}
+            material: str | None = None, supplier: str | None = None,
+            location: str | None = None, q: str | None = None) -> dict:
+    from app.analytics.common import allowed_codes, apply_search, filter_codes, filter_options, location_options
+    kw = {"commodity": commodity, "buyer": buyer, "material": material,
+          "supplier": supplier, "location": location, "q": q}
     incoming = incoming_materials.analyze(db, as_of=as_of, **kw)
     planning = material_planning.analyze(db, as_of=as_of, **kw)
     srcing = sourcing.analyze(db, as_of=as_of, **kw)
 
     materials = load_df(db, "materials")
-    opts = filter_options(materials, commodity, buyer, material, supplier,
-                          suppliers=load_df(db, "suppliers"))
+    warehouse_stock = load_df(db, "warehouse_stock")
+    opts = filter_options(materials, commodity, buyer, material, supplier, location,
+                          suppliers=load_df(db, "suppliers"),
+                          locations=location_options(warehouse_stock))
     codes = allowed_codes(materials, commodity, buyer, material)
-    stock = filter_codes(load_df(db, "stock"), codes)
+    filtered_materials = apply_search(filter_codes(materials, codes), q, ["material_code", "description"])
+    stock_map = stock_by_material(load_df(db, "stock"), warehouse_stock, location)
     stock_value = 0.0
-    if not stock.empty and not materials.empty:
-        merged = stock.merge(
-            materials[["material_code", "unit_cost"]], on="material_code", how="left"
-        )
-        merged["qty_on_hand"] = merged["qty_on_hand"].fillna(0)
-        merged["unit_cost"] = merged["unit_cost"].fillna(0)
-        stock_value = (merged["qty_on_hand"] * merged["unit_cost"]).sum()
+    if not filtered_materials.empty:
+        m = filtered_materials.copy()
+        m["qty_on_hand"] = m["material_code"].map(stock_map).fillna(0.0)
+        m["unit_cost"] = pd.to_numeric(m["unit_cost"], errors="coerce").fillna(0.0)
+        stock_value = (m["qty_on_hand"] * m["unit_cost"]).sum()
 
     data_status = _data_status(db)
 

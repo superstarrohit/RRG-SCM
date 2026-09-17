@@ -57,12 +57,12 @@ export default function Dashboard() {
           <Donut segments={statusSegs} centerValue={fmtMoney(k.incoming_value)} centerLabel="incoming" />
         </Panel>
         <Panel title="Top Suppliers by Committed Value">
-          <VBars data={supplierBars} valueFormat={(v) => "$" + fmtNum(v / 1000) + "k"} color={PALETTE.purple} />
+          <VBars data={supplierBars} valueFormat={(v) => "₹" + fmtNum(v / 1000) + "k"} color={PALETTE.purple} />
         </Panel>
       </div>
 
       <Panel title="Expected Arrivals" hint="open PO value by week">
-        <LineChart data={arrivals} valueFormat={(v) => "$" + fmtNum(v / 1000) + "k"} color={PALETTE.cyan} />
+        <LineChart data={arrivals} valueFormat={(v) => "₹" + fmtNum(v / 1000) + "k"} color={PALETTE.cyan} />
       </Panel>
 
       <div className="panel-grid">

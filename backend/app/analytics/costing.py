@@ -9,7 +9,7 @@ from datetime import date
 
 import pandas as pd
 
-from app.analytics.common import load_df, safe_round
+from app.analytics.common import allowed_codes, apply_search, filter_options, load_df, safe_round
 from sqlalchemy.orm import Session
 
 
@@ -28,12 +28,21 @@ def _roll_up(parent: str, bom: dict, cost: dict, seen: set) -> float:
     return total
 
 
-def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25) -> dict:
+def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25,
+            commodity: str | None = None, buyer: str | None = None,
+            material: str | None = None, supplier: str | None = None,
+            location: str | None = None, q: str | None = None) -> dict:
     materials = load_df(db, "materials")
     bom = load_df(db, "bom")
+    opts = filter_options(materials, commodity, buyer, material, supplier, location,
+                          suppliers=load_df(db, "suppliers"))
+    # Supplier/Location don't apply to BOM cost roll-up (no such dimension on
+    # a bill of materials) — accepted for consistency with the global bar.
 
     if bom.empty:
-        return _empty(as_of)
+        return {**_empty(as_of), "filters": opts}
+
+    parent_codes = allowed_codes(materials, commodity, buyer, material)
 
     cost = {}
     desc = {}
@@ -50,8 +59,10 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25) -> dict:
             (r["component_material"], float(r["qty_per"]), float(r["scrap_pct"]))
         )
 
+    parents = [p for p in bom_map if parent_codes is None or p in parent_codes]
+
     rows = []
-    for parent in bom_map:
+    for parent in parents:
         rolled = _roll_up(parent, bom_map, cost, set())
         std = cost.get(parent, 0.0)
         rows.append(
@@ -65,6 +76,11 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25) -> dict:
                 "variance_pct": safe_round(100 * (std - rolled) / rolled) if rolled else None,
             }
         )
+    if q:
+        q_low = q.strip().lower()
+        rows = [r for r in rows if q_low in str(r["material_code"]).lower()
+                or q_low in str(r.get("description") or "").lower()]
+
     rows.sort(key=lambda r: r["rolled_up_cost"], reverse=True)
 
     kpis = {
@@ -77,6 +93,7 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25) -> dict:
     return {
         "as_of": (as_of or date.today()).isoformat(),
         "empty": False,
+        "filters": opts,
         "kpis": kpis,
         "cost_rollup": rows[:top_n],
     }
@@ -87,6 +104,8 @@ def _empty(as_of: date | None) -> dict:
         "as_of": (as_of or date.today()).isoformat(),
         "empty": True,
         "message": "Load a Bill of Materials (and material master for costs) to run costing.",
+        "filters": {"commodity": [], "buyer": [], "material": [], "supplier": [], "location": [],
+                   "selected": {"commodity": None, "buyer": None, "material": None, "supplier": None, "location": None}},
         "kpis": {"finished_goods_costed": 0, "avg_rolled_up_cost": 0.0, "items_with_variance": 0},
         "cost_rollup": [],
     }

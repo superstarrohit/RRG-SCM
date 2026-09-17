@@ -46,12 +46,12 @@ export default function VendorReceipts() {
             <button className={!isVal ? "on" : ""} onClick={() => setMetric("qty")}>Quantity</button>
           </div>
         </div>
-        <LineChart data={line} valueFormat={isVal ? (v) => "$" + fmtNum(v / 1000) + "k" : (v) => fmtNum(v)} color={PALETTE.cyan} />
+        <LineChart data={line} valueFormat={isVal ? (v) => "₹" + fmtNum(v / 1000) + "k" : (v) => fmtNum(v)} color={PALETTE.cyan} />
       </Panel>
 
       <div className="panel-grid">
         <Panel title="Received Value by Supplier">
-          <VBars data={supBars} valueFormat={(v) => "$" + fmtNum(v / 1000) + "k"} color={PALETTE.purple} />
+          <VBars data={supBars} valueFormat={(v) => "₹" + fmtNum(v / 1000) + "k"} color={PALETTE.purple} />
         </Panel>
         <Panel title="Received Value by Commodity">
           <DataTable

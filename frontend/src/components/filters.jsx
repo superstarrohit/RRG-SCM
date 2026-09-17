@@ -1,6 +1,6 @@
-// Global slicer context: commodity, buyer, material, supplier and a date
-// range — mirrors the reference report's filter panel — shared across every
-// report page via localStorage-persisted state.
+// Global slicer context: commodity, buyer, material, supplier, location, a
+// free-text search box and a date range — the full filter panel from the
+// reference report — shared across every report page via localStorage.
 import React from "react";
 import { api } from "../api/client.js";
 import Icon from "./icons.jsx";
@@ -15,9 +15,11 @@ export function FiltersProvider({ children }) {
   const [buyer, setBuyer] = React.useState(() => load("scm.buyer"));
   const [material, setMaterial] = React.useState(() => load("scm.material"));
   const [supplier, setSupplier] = React.useState(() => load("scm.supplier"));
+  const [location, setLocation] = React.useState(() => load("scm.location"));
+  const [q, setQ] = React.useState(() => load("scm.q"));
   const [start, setStart] = React.useState(() => load("scm.start"));
   const [end, setEnd] = React.useState(() => load("scm.end"));
-  const [options, setOptions] = React.useState({ commodity: [], buyer: [], material: [], supplier: [] });
+  const [options, setOptions] = React.useState({ commodity: [], buyer: [], material: [], supplier: [], location: [] });
 
   React.useEffect(() => {
     api.slicers().then(setOptions).catch(() => {});
@@ -26,6 +28,8 @@ export function FiltersProvider({ children }) {
   React.useEffect(() => save("scm.buyer", buyer), [buyer]);
   React.useEffect(() => save("scm.material", material), [material]);
   React.useEffect(() => save("scm.supplier", supplier), [supplier]);
+  React.useEffect(() => save("scm.location", location), [location]);
+  React.useEffect(() => save("scm.q", q), [q]);
   React.useEffect(() => save("scm.start", start), [start]);
   React.useEffect(() => save("scm.end", end), [end]);
 
@@ -35,18 +39,23 @@ export function FiltersProvider({ children }) {
   if (buyer) params.buyer = buyer;
   if (material) params.material = material;
   if (supplier) params.supplier = supplier;
+  if (location) params.location = location;
+  if (q) params.q = q;
   if (start) params.start = start;
   if (end) params.end = end;
 
-  const count = [commodity, buyer, material, supplier, start, end].filter(Boolean).length;
+  const count = [commodity, buyer, material, supplier, location, q, start, end].filter(Boolean).length;
 
   const value = {
-    commodity, buyer, material, supplier, start, end,
-    setCommodity, setBuyer, setMaterial, setSupplier, setStart, setEnd,
+    commodity, buyer, material, supplier, location, q, start, end,
+    setCommodity, setBuyer, setMaterial, setSupplier, setLocation, setQ, setStart, setEnd,
     options, setOptions, params, count,
     active: count > 0,
-    key: `${commodity}|${buyer}|${material}|${supplier}|${start}|${end}`, // effect deps
-    clear: () => { setCommodity(""); setBuyer(""); setMaterial(""); setSupplier(""); setStart(""); setEnd(""); },
+    key: `${commodity}|${buyer}|${material}|${supplier}|${location}|${q}|${start}|${end}`, // effect deps
+    clear: () => {
+      setCommodity(""); setBuyer(""); setMaterial(""); setSupplier("");
+      setLocation(""); setQ(""); setStart(""); setEnd("");
+    },
   };
   return <FiltersContext.Provider value={value}>{children}</FiltersContext.Provider>;
 }
@@ -60,8 +69,15 @@ const CHIP_META = {
   buyer: { icon: "users", label: "Buyer" },
   material: { icon: "cube", label: "Material" },
   supplier: { icon: "handshake", label: "Supplier" },
+  location: { icon: "database", label: "Location" },
+  q: { icon: "search", label: "Search" },
   start: { icon: "clock", label: "From" },
   end: { icon: "clock", label: "To" },
+};
+const SETTER = {
+  commodity: "setCommodity", buyer: "setBuyer", material: "setMaterial",
+  supplier: "setSupplier", location: "setLocation", q: "setQ",
+  start: "setStart", end: "setEnd",
 };
 
 function labelFor(f, key, value) {
@@ -74,7 +90,33 @@ function labelFor(f, key, value) {
     const s = f.options.supplier.find((o) => o.code === value);
     return s ? s.label : value;
   }
+  if (key === "q") return `"${value}"`;
   return value;
+}
+
+// Debounced free-text search box — waits for a pause in typing before
+// pushing into the shared filter state (and thus firing API calls).
+function SearchField({ f }) {
+  const [local, setLocal] = React.useState(f.q);
+  React.useEffect(() => setLocal(f.q), [f.q]);
+  React.useEffect(() => {
+    const t = setTimeout(() => { if (local !== f.q) f.setQ(local); }, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [local]);
+  return (
+    <div className="fb-field" style={{ minWidth: 200 }}>
+      <span className="fb-field-label">Search</span>
+      <span className="ws-search" style={{ minWidth: 0 }}>
+        <Icon name="search" size={14} />
+        <input
+          value={local}
+          onChange={(e) => setLocal(e.target.value)}
+          placeholder="Material, description, PO, supplier…"
+        />
+      </span>
+    </div>
+  );
 }
 
 // The global slicer bar rendered under the top nav — collapsible on mobile.
@@ -83,7 +125,7 @@ export function FilterBar() {
   const [open, setOpen] = React.useState(false);
   if (!f) return null;
 
-  const chipKeys = ["commodity", "buyer", "material", "supplier", "start", "end"];
+  const chipKeys = ["commodity", "buyer", "material", "supplier", "location", "q", "start", "end"];
   const activeChips = chipKeys.filter((k) => f[k]);
 
   return (
@@ -99,6 +141,8 @@ export function FilterBar() {
 
       <div className="fb-row">
         <span className="fb-label"><Icon name="filter" size={14} /> Filters</span>
+
+        <SearchField f={f} />
 
         <div className="fb-field">
           <span className="fb-field-label">Commodity</span>
@@ -133,6 +177,14 @@ export function FilterBar() {
         </div>
 
         <div className="fb-field">
+          <span className="fb-field-label">Location</span>
+          <select value={f.location} onChange={(e) => f.setLocation(e.target.value)}>
+            <option value="">All locations</option>
+            {f.options.location.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </div>
+
+        <div className="fb-field">
           <span className="fb-field-label">Date Range</span>
           <span className="fb-date" title="Date range (time-series pages)">
             <Icon name="clock" size={13} />
@@ -157,7 +209,7 @@ export function FilterBar() {
             <span className="fb-chip" key={k}>
               <Icon name={CHIP_META[k].icon} size={12} />
               {CHIP_META[k].label}: {labelFor(f, k, f[k])}
-              <button onClick={() => f[`set${k[0].toUpperCase()}${k.slice(1)}`]("")} aria-label={`Remove ${CHIP_META[k].label} filter`}>
+              <button onClick={() => f[SETTER[k]]("")} aria-label={`Remove ${CHIP_META[k].label} filter`}>
                 <Icon name="x" size={10} />
               </button>
             </span>

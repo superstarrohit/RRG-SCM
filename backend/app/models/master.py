@@ -21,7 +21,7 @@ class Material(Base, TimestampMixin):
     uom: Mapped[str | None] = mapped_column(String(32))  # unit of measure
 
     unit_cost: Mapped[float] = mapped_column(Float, default=0.0)
-    currency: Mapped[str | None] = mapped_column(String(8), default="USD")
+    currency: Mapped[str | None] = mapped_column(String(8), default="INR")
 
     # Planning parameters
     lead_time_days: Mapped[int] = mapped_column(Integer, default=0)

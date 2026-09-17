@@ -10,11 +10,13 @@ export function fmtNum(n, digits = 0) {
   });
 }
 
+// App is deployed for an India-based operation: money is shown in ₹ (INR)
+// with Indian digit grouping (lakh/crore), via the en-IN locale.
 export function fmtMoney(n) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return Number(n).toLocaleString(undefined, {
+  return Number(n).toLocaleString("en-IN", {
     style: "currency",
-    currency: "USD",
+    currency: "INR",
     maximumFractionDigits: 0,
   });
 }
@@ -49,10 +51,14 @@ const BADGE = {
   future: "b-green", ok: "b-green", no_date: "b-grey", excess: "b-grey",
   A: "b-red", B: "b-amber", C: "b-green", vip: "b-vip",
 };
-export function Badge({ value }) {
-  if (value === null || value === undefined || value === "")
+// `value` picks the badge's color (a BADGE key); `label`, when given,
+// overrides the displayed text — for callers that map an arbitrary value
+// (e.g. a movement type) onto a shared tone rather than a status keyword.
+export function Badge({ value, label }) {
+  const text = label === undefined ? value : label;
+  if (text === null || text === undefined || text === "")
     return <span className="muted">—</span>;
-  return <span className={`badge ${BADGE[value] || "b-grey"}`}>{String(value).replace(/_/g, " ")}</span>;
+  return <span className={`badge ${BADGE[value] || "b-grey"}`}>{String(text).replace(/_/g, " ")}</span>;
 }
 
 export function Panel({ title, children, hint }) {

@@ -29,15 +29,21 @@ def _as_of(as_of: str | None) -> date | None:
 
 
 # Shared global slicers (mirrors the reference report's filter panel:
-# commodity, buyer, material and supplier — date range is passed separately
-# as start/end since only the time-series endpoints use it).
+# commodity, buyer, material, supplier, location and a free-text search box
+# — date range is passed separately as start/end since only the time-series
+# endpoints use it).
 def _slicers(
     commodity: str | None = Query(None),
     buyer: str | None = Query(None),
     material: str | None = Query(None),
     supplier: str | None = Query(None),
+    location: str | None = Query(None),
+    q: str | None = Query(None, description="Free-text search (material, description, PO, supplier)"),
 ) -> dict:
-    return {"commodity": commodity, "buyer": buyer, "material": material, "supplier": supplier}
+    return {
+        "commodity": commodity, "buyer": buyer, "material": material,
+        "supplier": supplier, "location": location, "q": q,
+    }
 
 
 @router.get("/overview")
@@ -83,18 +89,20 @@ def get_sourcing(
 def get_costing(
     as_of: str | None = Query(None),
     top_n: int = Query(25, ge=1, le=200),
+    f: dict = Depends(_slicers),
     db: Session = Depends(get_db),
 ) -> dict:
-    return costing.analyze(db, as_of=_as_of(as_of), top_n=top_n)
+    return costing.analyze(db, as_of=_as_of(as_of), top_n=top_n, **f)
 
 
 @router.get("/fg-planning")
 def get_fg_planning(
     as_of: str | None = Query(None),
     top_n: int = Query(25, ge=1, le=200),
+    f: dict = Depends(_slicers),
     db: Session = Depends(get_db),
 ) -> dict:
-    return fg_planning.analyze(db, as_of=_as_of(as_of), top_n=top_n)
+    return fg_planning.analyze(db, as_of=_as_of(as_of), top_n=top_n, **f)
 
 
 @router.get("/stock-monitoring")
@@ -137,10 +145,11 @@ def get_movements(
     top_n: int = Query(20, ge=1, le=200),
     start: str | None = Query(None),
     end: str | None = Query(None),
+    mvt_type: str | None = Query(None, description="Movement type — page-specific slicer"),
     f: dict = Depends(_slicers),
     db: Session = Depends(get_db),
 ) -> dict:
-    return movements.analyze(db, as_of=_as_of(as_of), top_n=top_n, start=start, end=end, **f)
+    return movements.analyze(db, as_of=_as_of(as_of), top_n=top_n, start=start, end=end, mvt_type=mvt_type, **f)
 
 
 @router.get("/forecasting")
