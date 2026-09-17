@@ -13,10 +13,12 @@ from sqlalchemy.orm import Session
 
 def analyze(db: Session, *, as_of: date | None = None,
             commodity: str | None = None, buyer: str | None = None,
+            material: str | None = None, supplier: str | None = None,
             start: str | None = None, end: str | None = None, top_n: int = 20) -> dict:
     mv = load_df(db, "movements")
     materials = load_df(db, "materials")
-    opts = filter_options(materials, commodity, buyer)
+    opts = filter_options(materials, commodity, buyer, material, supplier,
+                          suppliers=load_df(db, "suppliers"))
 
     if mv.empty:
         return _empty(as_of, opts)
@@ -27,7 +29,7 @@ def analyze(db: Session, *, as_of: date | None = None,
     mv["movement_date"] = pd.to_datetime(mv["movement_date"], errors="coerce")
     mv["mvt_type"] = mv["mvt_type"].fillna("Other")
 
-    codes = allowed_codes(materials, commodity, buyer)
+    codes = allowed_codes(materials, commodity, buyer, material)
     mv = filter_codes(mv, codes)
     mv = filter_dates(mv, "movement_date", start, end)
     if mv.empty:

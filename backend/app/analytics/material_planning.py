@@ -15,22 +15,24 @@ from sqlalchemy.orm import Session
 
 
 def analyze(db: Session, *, as_of: date | None = None, top_n: int = 20,
-            commodity: str | None = None, buyer: str | None = None) -> dict:
-    from app.analytics.common import allowed_codes, filter_codes, filter_options
+            commodity: str | None = None, buyer: str | None = None,
+            material: str | None = None, supplier: str | None = None) -> dict:
+    from app.analytics.common import allowed_codes, filter_codes, filter_options, filter_supplier
     materials = load_df(db, "materials")
     stock = load_df(db, "stock")
     pos = load_df(db, "open_pos")
     demand = load_df(db, "demand")
     now = today(as_of)
-    opts = filter_options(materials, commodity, buyer)
+    opts = filter_options(materials, commodity, buyer, material, supplier,
+                          suppliers=load_df(db, "suppliers"))
 
     if materials.empty and stock.empty and demand.empty:
         return {**_empty(as_of), "filters": opts}
 
-    codes = allowed_codes(materials, commodity, buyer)
+    codes = allowed_codes(materials, commodity, buyer, material)
     materials = filter_codes(materials, codes)
     stock = filter_codes(stock, codes)
-    pos = filter_codes(pos, codes)
+    pos = filter_supplier(filter_codes(pos, codes), supplier)
     demand = filter_codes(demand, codes)
 
     base = _material_base(materials, stock)

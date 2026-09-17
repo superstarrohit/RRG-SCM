@@ -28,12 +28,16 @@ def _as_of(as_of: str | None) -> date | None:
     return date.fromisoformat(as_of) if as_of else None
 
 
-# Shared global slicers.
+# Shared global slicers (mirrors the reference report's filter panel:
+# commodity, buyer, material and supplier — date range is passed separately
+# as start/end since only the time-series endpoints use it).
 def _slicers(
     commodity: str | None = Query(None),
     buyer: str | None = Query(None),
+    material: str | None = Query(None),
+    supplier: str | None = Query(None),
 ) -> dict:
-    return {"commodity": commodity, "buyer": buyer}
+    return {"commodity": commodity, "buyer": buyer, "material": material, "supplier": supplier}
 
 
 @router.get("/overview")
@@ -96,12 +100,11 @@ def get_fg_planning(
 @router.get("/stock-monitoring")
 def get_stock_monitoring(
     as_of: str | None = Query(None),
-    commodity: str | None = Query(None),
-    buyer: str | None = Query(None),
     top_n: int = Query(25, ge=1, le=500),
+    f: dict = Depends(_slicers),
     db: Session = Depends(get_db),
 ) -> dict:
-    return stock_monitoring.analyze(db, as_of=_as_of(as_of), commodity=commodity, buyer=buyer, top_n=top_n)
+    return stock_monitoring.analyze(db, as_of=_as_of(as_of), top_n=top_n, **f)
 
 
 @router.get("/inventory-monitoring")

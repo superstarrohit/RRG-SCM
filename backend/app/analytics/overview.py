@@ -16,16 +16,18 @@ from app.models import IngestionLog
 
 
 def analyze(db: Session, *, as_of: date | None = None,
-            commodity: str | None = None, buyer: str | None = None) -> dict:
+            commodity: str | None = None, buyer: str | None = None,
+            material: str | None = None, supplier: str | None = None) -> dict:
     from app.analytics.common import allowed_codes, filter_codes, filter_options
-    kw = {"commodity": commodity, "buyer": buyer}
+    kw = {"commodity": commodity, "buyer": buyer, "material": material, "supplier": supplier}
     incoming = incoming_materials.analyze(db, as_of=as_of, **kw)
     planning = material_planning.analyze(db, as_of=as_of, **kw)
     srcing = sourcing.analyze(db, as_of=as_of, **kw)
 
     materials = load_df(db, "materials")
-    opts = filter_options(materials, commodity, buyer)
-    codes = allowed_codes(materials, commodity, buyer)
+    opts = filter_options(materials, commodity, buyer, material, supplier,
+                          suppliers=load_df(db, "suppliers"))
+    codes = allowed_codes(materials, commodity, buyer, material)
     stock = filter_codes(load_df(db, "stock"), codes)
     stock_value = 0.0
     if not stock.empty and not materials.empty:

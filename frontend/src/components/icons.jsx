@@ -50,13 +50,14 @@ const P = {
   target: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4",
   flow: "M4 6h10M4 6l3-3M4 6l3 3M20 12H10M20 12l-3-3M20 12l-3 3M16 18H6M6 18l3-3M6 18l3 3",
   receipt: "M4 2v20l3-2 3 2 3-2 3 2 3-2V2l-3 2-3-2-3 2-3-2zM8 8h8M8 12h8M8 16h5",
+  chevronDown: "M6 9l6 6 6-6",
 };
 
-export default function Icon({ name, size }) {
+export default function Icon({ name, size, className }) {
   const d = P[name] || P.box;
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-         strokeLinecap="round" strokeLinejoin="round"
+         strokeLinecap="round" strokeLinejoin="round" className={className}
          style={size ? { width: size, height: size } : undefined}>
       {d.split("M").filter(Boolean).map((seg, i) => <path key={i} d={"M" + seg} />)}
     </svg>

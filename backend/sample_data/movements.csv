@@ -1,11 +1,11 @@
 material_code,mvt_type,description,qty,value,movement_date
-RM-1001,GRN,Goods receipt,2000,6300,2026-08-21
-RM-1002,GRN,Goods receipt,300,1500,2026-09-05
-RM-1001,Issue,Production issue,-1500,-4725,2026-09-07
-CP-2003,GRN,Goods receipt,100,1840,2026-08-26
-CP-2001,Issue,Production issue,-400,-960,2026-09-09
-RM-1003,GRN,Goods receipt,500,850,2026-09-08
-SA-3001,Transfer,Warehouse transfer,20,840,2026-09-11
-RM-1004,Adjustment,Cycle count adj.,-30,-28,2026-09-12
-CP-2002,Issue,Production issue,-3000,-144,2026-09-13
-PK-4001,GRN,Goods receipt,5000,1500,2026-09-14
+RM-1001,GRN,Goods receipt,2000,6300,2026-08-23
+RM-1002,GRN,Goods receipt,300,1500,2026-09-07
+RM-1001,Issue,Production issue,-1500,-4725,2026-09-09
+CP-2003,GRN,Goods receipt,100,1840,2026-08-28
+CP-2001,Issue,Production issue,-400,-960,2026-09-11
+RM-1003,GRN,Goods receipt,500,850,2026-09-10
+SA-3001,Transfer,Warehouse transfer,20,840,2026-09-13
+RM-1004,Adjustment,Cycle count adj.,-30,-28,2026-09-14
+CP-2002,Issue,Production issue,-3000,-144,2026-09-15
+PK-4001,GRN,Goods receipt,5000,1500,2026-09-16

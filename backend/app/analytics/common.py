@@ -79,16 +79,19 @@ def today(as_of: date | None = None) -> pd.Timestamp:
     return pd.Timestamp(as_of or date.today())
 
 
-def allowed_codes(materials: pd.DataFrame, commodity: str | None = None, buyer: str | None = None):
-    """Set of material_codes matching the commodity/buyer slicers, or None (=all)."""
-    if materials.empty or (not commodity and not buyer):
+def allowed_codes(materials: pd.DataFrame, commodity=None, buyer=None, material=None):
+    """Set of material_codes matching the commodity/buyer/material slicers, or None."""
+    if materials.empty or not (commodity or buyer or material):
         return None
     df = materials
     if commodity and "commodity" in df:
         df = df[df["commodity"] == commodity]
     if buyer and "buyer" in df:
         df = df[df["buyer"] == buyer]
-    return set(df["material_code"])
+    codes = set(df["material_code"])
+    if material:
+        codes &= {material}
+    return codes
 
 
 def filter_codes(df: pd.DataFrame, codes) -> pd.DataFrame:
@@ -98,12 +101,39 @@ def filter_codes(df: pd.DataFrame, codes) -> pd.DataFrame:
     return df[df["material_code"].isin(codes)]
 
 
-def filter_options(materials: pd.DataFrame, commodity=None, buyer=None) -> dict:
+def filter_supplier(df: pd.DataFrame, supplier) -> pd.DataFrame:
+    """Restrict a frame to one supplier (no-op if not given / no column)."""
+    if not supplier or df.empty or "supplier_code" not in df:
+        return df
+    return df[df["supplier_code"] == supplier]
+
+
+def filter_options(materials: pd.DataFrame, commodity=None, buyer=None,
+                    material=None, supplier=None, suppliers: pd.DataFrame | None = None) -> dict:
     """The slicer option lists + current selection, for the UI."""
-    def opts(col):
-        return sorted(materials[col].dropna().unique().tolist()) if (not materials.empty and col in materials) else []
-    return {"commodity": opts("commodity"), "buyer": opts("buyer"),
-            "selected": {"commodity": commodity, "buyer": buyer}}
+    def opts(col, df=materials):
+        return sorted(df[col].dropna().unique().tolist()) if (not df.empty and col in df) else []
+
+    mat_opts = []
+    if not materials.empty and "material_code" in materials:
+        d = materials.sort_values("material_code")
+        mat_opts = [
+            {"code": r["material_code"], "label": f"{r['material_code']} — {r.get('description') or ''}".rstrip(" —")}
+            for _, r in d.iterrows()
+        ]
+    sup_opts = []
+    if suppliers is not None and not suppliers.empty:
+        d = suppliers.sort_values("supplier_code")
+        sup_opts = [
+            {"code": r["supplier_code"], "label": f"{r['supplier_code']} — {r.get('name') or ''}".rstrip(" —")}
+            for _, r in d.iterrows()
+        ]
+
+    return {
+        "commodity": opts("commodity"), "buyer": opts("buyer"),
+        "material": mat_opts, "supplier": sup_opts,
+        "selected": {"commodity": commodity, "buyer": buyer, "material": material, "supplier": supplier},
+    }
 
 
 def filter_dates(df: pd.DataFrame, col: str, start=None, end=None) -> pd.DataFrame:

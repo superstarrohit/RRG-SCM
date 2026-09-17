@@ -15,17 +15,18 @@ from sqlalchemy.orm import Session
 
 
 def analyze(db: Session, *, as_of: date | None = None, top_n: int = 20,
-            commodity: str | None = None, buyer: str | None = None) -> dict:
-    from app.analytics.common import allowed_codes, filter_codes, filter_options
+            commodity: str | None = None, buyer: str | None = None,
+            material: str | None = None, supplier: str | None = None) -> dict:
+    from app.analytics.common import allowed_codes, filter_codes, filter_options, filter_supplier
     pos = load_df(db, "open_pos")
     receipts = load_df(db, "receipts")
     suppliers = load_df(db, "suppliers")
     materials = load_df(db, "materials")
-    opts = filter_options(materials, commodity, buyer)
+    opts = filter_options(materials, commodity, buyer, material, supplier, suppliers=suppliers)
 
-    codes = allowed_codes(materials, commodity, buyer)
-    pos = filter_codes(pos, codes)
-    receipts = filter_codes(receipts, codes)
+    codes = allowed_codes(materials, commodity, buyer, material)
+    pos = filter_supplier(filter_codes(pos, codes), supplier)
+    receipts = filter_supplier(filter_codes(receipts, codes), supplier)
 
     if pos.empty and receipts.empty:
         return {**_empty(as_of), "filters": opts}

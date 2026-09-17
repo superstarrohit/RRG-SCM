@@ -6,18 +6,19 @@ from datetime import date
 import pandas as pd
 
 from app.analytics.common import (
-    allowed_codes, filter_codes, filter_dates, filter_options, load_df, safe_round,
+    allowed_codes, filter_codes, filter_dates, filter_options, filter_supplier, load_df, safe_round,
 )
 from sqlalchemy.orm import Session
 
 
 def analyze(db: Session, *, as_of: date | None = None,
             commodity: str | None = None, buyer: str | None = None,
+            material: str | None = None, supplier: str | None = None,
             start: str | None = None, end: str | None = None, top_n: int = 12) -> dict:
     receipts = load_df(db, "receipts")
     materials = load_df(db, "materials")
     suppliers = load_df(db, "suppliers")
-    opts = filter_options(materials, commodity, buyer)
+    opts = filter_options(materials, commodity, buyer, material, supplier, suppliers=suppliers)
 
     if receipts.empty:
         return _empty(as_of, opts)
@@ -28,8 +29,9 @@ def analyze(db: Session, *, as_of: date | None = None,
     r["receipt_date"] = pd.to_datetime(r["receipt_date"], errors="coerce")
     r["value"] = r["qty"] * r["unit_price"]
 
-    codes = allowed_codes(materials, commodity, buyer)
+    codes = allowed_codes(materials, commodity, buyer, material)
     r = filter_codes(r, codes)
+    r = filter_supplier(r, supplier)
     r = filter_dates(r, "receipt_date", start, end)
     if r.empty:
         return _empty(as_of, opts)

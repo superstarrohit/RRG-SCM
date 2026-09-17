@@ -114,8 +114,25 @@ export function PageHeader({ title, subtitle, asOf, right }) {
   );
 }
 
-export function Loading() {
-  return <div className="state">Loading…</div>;
+// Premium skeleton loader: mirrors the page's usual shape (header, KPI row,
+// panels) so the layout doesn't jump once data arrives.
+export function Loading({ kpis = 6, panels = 2 }) {
+  return (
+    <div aria-busy="true" aria-label="Loading">
+      <div className="skel skel-line" style={{ width: "38%", height: 22, marginBottom: 10 }} />
+      <div className="skel skel-line" style={{ width: "58%", marginBottom: 22 }} />
+      <div className="kpi-grid">
+        {Array.from({ length: kpis }).map((_, i) => (
+          <div className="skel skel-kpi" key={i} />
+        ))}
+      </div>
+      <div className="panel-grid">
+        {Array.from({ length: panels }).map((_, i) => (
+          <div className="skel skel-panel" key={i} />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function ErrorState({ error }) {
@@ -133,7 +150,7 @@ export function EmptyState({ message }) {
       <div className="big">📭</div>
       <div>{message || "No data yet."}</div>
       <div className="muted" style={{ marginTop: 8 }}>
-        Open <b>Data Ingestion</b> to upload dumps, or run the seed script.
+        Open <b>Data</b> to upload dumps, or run the seed script.
       </div>
     </div>
   );

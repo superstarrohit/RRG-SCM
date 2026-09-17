@@ -13,12 +13,14 @@ from sqlalchemy.orm import Session
 
 
 def analyze(db: Session, *, as_of: date | None = None,
-            commodity: str | None = None, buyer: str | None = None, top_n: int = 30) -> dict:
+            commodity: str | None = None, buyer: str | None = None,
+            material: str | None = None, supplier: str | None = None, top_n: int = 30) -> dict:
     fc = load_df(db, "forecast")
     materials = load_df(db, "materials")
     stock = load_df(db, "stock")
     pos = load_df(db, "open_pos")
-    opts = filter_options(materials, commodity, buyer)
+    opts = filter_options(materials, commodity, buyer, material, supplier,
+                          suppliers=load_df(db, "suppliers"))
 
     if fc.empty:
         return _empty(as_of, opts)
@@ -28,7 +30,7 @@ def analyze(db: Session, *, as_of: date | None = None,
         fc[c] = pd.to_numeric(fc[c], errors="coerce").fillna(0.0)
     fc["total_3m"] = fc["m1_qty"] + fc["m2_qty"] + fc["m3_qty"]
 
-    codes = allowed_codes(materials, commodity, buyer)
+    codes = allowed_codes(materials, commodity, buyer, material)
     fc = filter_codes(fc, codes)
 
     if not materials.empty:

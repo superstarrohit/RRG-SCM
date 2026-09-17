@@ -71,6 +71,28 @@ def test_slicers_meta(client):
     assert "Metals" in d["commodity"] and "A" in d["buyer"]
 
 
+def test_material_and_supplier_slicers(client):
+    _up(client, "materials", pd.DataFrame({
+        "Material": ["M1", "M2"], "Commodity": ["Metals", "Electro"],
+        "Buyer": ["A", "B"], "Cost": [10.0, 2.0]}))
+    _up(client, "suppliers", pd.DataFrame({"Vendor": ["V1", "V2"], "Supplier Name": ["Acme", "Zenith"]}))
+    _up(client, "open_pos", pd.DataFrame({
+        "PO No": ["P1", "P2"], "Material": ["M1", "M2"], "Vendor": ["V1", "V2"],
+        "Open Qty": [10, 20], "Unit Price": [10.0, 2.0]}))
+
+    s = client.get("/api/meta/slicers").json()
+    assert any(m["code"] == "M1" for m in s["material"])
+    assert any(sp["code"] == "V1" for sp in s["supplier"])
+
+    by_material = client.get("/api/analytics/incoming", params={"material": "M1"}).json()
+    assert by_material["kpis"]["open_lines"] == 1
+    assert by_material["filters"]["selected"]["material"] == "M1"
+
+    by_supplier = client.get("/api/analytics/incoming", params={"supplier": "V2"}).json()
+    assert by_supplier["kpis"]["open_lines"] == 1
+    assert by_supplier["kpis"]["suppliers"] == 1
+
+
 def test_date_range_filter(client):
     _materials(client)
     _up(client, "inventory_snapshots", pd.DataFrame({
