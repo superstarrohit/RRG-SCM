@@ -211,6 +211,25 @@ def latest_open_pos(db: Session) -> pd.DataFrame:
     return df
 
 
+def location_options_db(db: Session) -> list[str]:
+    """Distinct site/warehouse values, queried directly (no full-table load).
+
+    Same values as ``location_options(load_df(db, "warehouse_stock"),
+    load_df(db, "inventory_snapshots"))``, but for the global slicer bar
+    (called on every page navigation) that's the only thing either table is
+    needed for — worth avoiding materializing a 700k-row inventory history
+    into pandas just to read one column off it.
+    """
+    vals: set[str] = set()
+    vals |= set(db.execute(
+        select(WarehouseStock.warehouse_code).distinct().where(WarehouseStock.warehouse_code.isnot(None))
+    ).scalars().all())
+    vals |= set(db.execute(
+        select(InventorySnapshot.location).distinct().where(InventorySnapshot.location.isnot(None))
+    ).scalars().all())
+    return sorted(vals)
+
+
 def location_options(*frames: pd.DataFrame) -> list[str]:
     """Union of distinct site/warehouse values across one or more frames.
 
