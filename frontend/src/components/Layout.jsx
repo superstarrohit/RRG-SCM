@@ -2,6 +2,7 @@ import React from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import Icon from "./icons.jsx";
 import { FilterBar } from "./filters.jsx";
+import { ThemeCenterButton } from "./theme.jsx";
 
 const TABS = [
   { to: "/", label: "Dashboard", icon: "dashboard", end: true },
@@ -73,6 +74,7 @@ export default function Layout({ children }) {
           </nav>
         </div>
         <div className="actions">
+          <ThemeCenterButton />
           <button className="btn ghost" onClick={() => window.location.reload()} title="Refresh">
             <Icon name="refresh" />
             <span className="btn-label">Refresh</span>

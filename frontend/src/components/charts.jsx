@@ -1,14 +1,17 @@
 // Inline-SVG charts: Donut, vertical glow bars, glow line chart, status bars, meter.
 import React from "react";
 
+// CSS-variable references, not static hex — SVG presentation attributes
+// (fill/stroke/stop-color) resolve var() same as any CSS property, so chart
+// colors follow the active [data-accent] theme automatically.
 export const PALETTE = {
-  purple: "#8b7bff",
-  blue: "#60a5fa",
-  cyan: "#22d3ee",
-  green: "#34d399",
-  amber: "#fbbf24",
-  red: "#fb7185",
-  grey: "#64748b",
+  purple: "var(--primary)",
+  blue: "var(--blue)",
+  cyan: "var(--cyan)",
+  green: "var(--green)",
+  amber: "var(--amber)",
+  red: "var(--red)",
+  grey: "var(--muted)",
 };
 
 // ---- Donut chart ----
