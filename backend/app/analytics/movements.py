@@ -6,6 +6,7 @@ from datetime import date
 import pandas as pd
 
 from app.analytics.common import (
+    materials_df,
     allowed_codes, apply_search, filter_codes, filter_dates, filter_options, load_df, safe_round,
 )
 from sqlalchemy.orm import Session
@@ -18,7 +19,7 @@ def analyze(db: Session, *, as_of: date | None = None,
             mvt_type: str | None = None,
             start: str | None = None, end: str | None = None, top_n: int = 20) -> dict:
     mv_all = load_df(db, "movements")
-    materials = load_df(db, "materials")
+    materials = materials_df(db)
     opts = filter_options(materials, commodity, buyer, material, supplier, location,
                           suppliers=load_df(db, "suppliers"))
     # Movement type is a page-specific slicer (mirrors the reference report's

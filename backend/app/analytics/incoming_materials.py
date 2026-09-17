@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from app.analytics.common import (
+    materials_df,
     abc_classify, allowed_codes, apply_search, filter_codes, filter_supplier,
     latest_open_pos, load_df, safe_round, today,
 )
@@ -25,7 +26,7 @@ def _prepare(db, as_of, commodity=None, buyer=None, material=None, supplier=None
     if pos.empty:
         return pos, now
 
-    materials = load_df(db, "materials")
+    materials = materials_df(db)
     suppliers = load_df(db, "suppliers")
     pos = filter_codes(pos, allowed_codes(materials, commodity, buyer, material))
     pos = filter_supplier(pos, supplier)
@@ -109,7 +110,7 @@ def analyze(
     q: str | None = None,
 ) -> dict:
     from app.analytics.common import filter_options
-    opts = filter_options(load_df(db, "materials"), commodity, buyer, material, supplier, location,
+    opts = filter_options(materials_df(db), commodity, buyer, material, supplier, location,
                           suppliers=load_df(db, "suppliers"))
     # Open POs aren't location-tagged in this schema, so the Location slicer
     # doesn't narrow this particular page — it's still accepted for API

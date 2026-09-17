@@ -49,9 +49,9 @@ def source_types() -> list[dict]:
 @router.get("/meta/slicers")
 def slicers(db=Depends(get_db)) -> dict:
     """Global slicer options (commodity, buyer, material, supplier, location)."""
-    from app.analytics.common import load_df, filter_options, location_options_db
+    from app.analytics.common import materials_df, load_df, filter_options, location_options_db
     return filter_options(
-        load_df(db, "materials"),
+        materials_df(db),
         suppliers=load_df(db, "suppliers"),
         locations=location_options_db(db),
     )

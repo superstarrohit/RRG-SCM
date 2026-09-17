@@ -6,6 +6,7 @@ from datetime import date
 import pandas as pd
 
 from app.analytics.common import (
+    materials_df,
     allowed_codes, apply_search, filter_codes, filter_dates, filter_options,
     filter_supplier, load_df, safe_round,
 )
@@ -18,7 +19,7 @@ def analyze(db: Session, *, as_of: date | None = None,
             location: str | None = None, q: str | None = None,
             start: str | None = None, end: str | None = None, top_n: int = 12) -> dict:
     receipts = load_df(db, "receipts")
-    materials = load_df(db, "materials")
+    materials = materials_df(db)
     suppliers = load_df(db, "suppliers")
     opts = filter_options(materials, commodity, buyer, material, supplier, location, suppliers=suppliers)
 

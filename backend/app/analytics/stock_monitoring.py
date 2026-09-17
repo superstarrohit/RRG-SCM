@@ -11,7 +11,7 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from app.analytics.common import latest_open_pos, load_df, safe_round, stock_by_material, today
+from app.analytics.common import materials_df, latest_open_pos, load_df, safe_round, stock_by_material, today
 from sqlalchemy.orm import Session
 
 STATUS_ORDER = ["stockout", "critical", "low", "healthy", "overstock"]
@@ -28,7 +28,7 @@ def analyze(
     location: str | None = None, q: str | None = None, top_n: int = 25,
 ) -> dict:
     from app.analytics.common import apply_search, filter_supplier
-    materials = load_df(db, "materials")
+    materials = materials_df(db)
     stock = load_df(db, "stock")
     warehouse_stock = load_df(db, "warehouse_stock")
     pos = latest_open_pos(db)

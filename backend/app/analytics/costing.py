@@ -9,7 +9,7 @@ from datetime import date
 
 import pandas as pd
 
-from app.analytics.common import allowed_codes, apply_search, filter_options, load_df, safe_round
+from app.analytics.common import materials_df, allowed_codes, apply_search, filter_options, load_df, safe_round
 from sqlalchemy.orm import Session
 
 
@@ -31,7 +31,7 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25,
             commodity: str | None = None, buyer: str | None = None,
             material: str | None = None, supplier: str | None = None,
             location: str | None = None, q: str | None = None) -> dict:
-    materials = load_df(db, "materials")
+    materials = materials_df(db)
     bom = load_df(db, "bom")
     opts = filter_options(materials, commodity, buyer, material, supplier, location,
                           suppliers=load_df(db, "suppliers"))

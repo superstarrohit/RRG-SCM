@@ -10,7 +10,7 @@ from datetime import date
 
 import pandas as pd
 
-from app.analytics.common import load_df, safe_round
+from app.analytics.common import materials_df, load_df, safe_round
 from sqlalchemy.orm import Session
 
 
@@ -23,7 +23,7 @@ def analyze(
 ) -> dict:
     from app.analytics.common import apply_search, filter_dates, location_options
     snaps = load_df(db, "inventory_snapshots")
-    materials = load_df(db, "materials")
+    materials = materials_df(db)
 
     if snaps.empty:
         return _empty(as_of)

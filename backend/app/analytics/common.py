@@ -13,11 +13,14 @@ from app.models import (
     Demand,
     Forecast,
     InventorySnapshot,
+    LocationMaster,
     Material,
     Movement,
+    MovementMaster,
     ProductionPlan,
     PurchaseOrder,
     Receipt,
+    SOBMaster,
     Stock,
     Supplier,
     WarehouseStock,
@@ -26,6 +29,9 @@ from app.models import (
 _MODEL_BY_NAME = {
     "materials": Material,
     "suppliers": Supplier,
+    "location_master": LocationMaster,
+    "movement_master": MovementMaster,
+    "sob_master": SOBMaster,
     "stock": Stock,
     "warehouse_stock": WarehouseStock,
     "open_pos": PurchaseOrder,
@@ -55,6 +61,53 @@ def load_df(db: Session, name: str) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=cols)
     return df[cols]
+
+
+# The uploaded material_master stores each field under its own name (map,
+# rm_material_code, material_description, total_leadtime, abc, refill_level,
+# …). Analytics were written against friendlier internal names, so this maps
+# the raw column -> the internal name the modules already read.
+_MATERIAL_ALIASES = {
+    "rm_material_code": "material_code",
+    "material_description": "description",
+    "map": "unit_cost",             # moving-average price
+    "total_leadtime": "lead_time_days",
+}
+
+
+def materials_df(db: Session) -> pd.DataFrame:
+    """Load the material master with the internal column names analytics expect.
+
+    Keeps every raw uploaded column and *adds* the derived aliases
+    (material_code, description, unit_cost, lead_time_days) plus a few fields
+    the file doesn't carry directly: category (falls back to commodity),
+    reorder_point (SAP reorder point ≈ refill_level here), min_order_qty
+    (defaults to 0), and abc_class (the numeric abc 1/2/3 rendered A/B/C).
+    Every analytics module goes through this instead of load_df(db,
+    "materials"), so none of them need to know the raw schema's names.
+    """
+    df = load_df(db, "materials")
+    if df.empty:
+        # Give callers the derived columns too, so downstream selects/… don't
+        # KeyError on an empty master.
+        for extra in ("material_code", "description", "unit_cost", "lead_time_days",
+                      "category", "reorder_point", "min_order_qty", "abc_class"):
+            if extra not in df:
+                df[extra] = pd.Series(dtype="object")
+        return df
+    for src, dst in _MATERIAL_ALIASES.items():
+        if src in df and dst not in df:
+            df[dst] = df[src]
+    if "category" not in df:
+        df["category"] = df.get("commodity")
+    if "reorder_point" not in df:
+        df["reorder_point"] = pd.to_numeric(df.get("refill_level"), errors="coerce").fillna(0.0)
+    if "min_order_qty" not in df:
+        df["min_order_qty"] = 0.0
+    if "abc_class" not in df and "abc" in df:
+        _abc = {1: "A", 2: "B", 3: "C", "1": "A", "2": "B", "3": "C"}
+        df["abc_class"] = df["abc"].map(_abc)
+    return df
 
 
 def to_date(series: pd.Series) -> pd.Series:
