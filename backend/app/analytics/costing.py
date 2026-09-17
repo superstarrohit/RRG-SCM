@@ -19,12 +19,11 @@ def _roll_up(parent: str, bom: dict, cost: dict, seen: set) -> float:
         return 0.0
     seen = seen | {parent}
     total = 0.0
-    for comp, qty_per, scrap in bom.get(parent, []):
-        eff_qty = qty_per * (1 + scrap / 100.0)
+    for comp, qty in bom.get(parent, []):
         if comp in bom:  # sub-assembly -> recurse
-            total += eff_qty * _roll_up(comp, bom, cost, seen)
+            total += qty * _roll_up(comp, bom, cost, seen)
         else:  # raw / purchased component
-            total += eff_qty * cost.get(comp, 0.0)
+            total += qty * cost.get(comp, 0.0)
     return total
 
 
@@ -51,13 +50,15 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25,
         cost = materials.set_index("material_code")["unit_cost"].to_dict()
         desc = materials.set_index("material_code")["description"].to_dict()
 
-    bom["qty_per"] = pd.to_numeric(bom["qty_per"], errors="coerce").fillna(1.0)
-    bom["scrap_pct"] = pd.to_numeric(bom["scrap_pct"], errors="coerce").fillna(0.0)
+    # The BOM carries its own FG description, so costing still shows readable
+    # names even when the material master hasn't been loaded (or doesn't cover
+    # this FG) — material master takes precedence when both are present.
+    bom_desc = bom.dropna(subset=["description"]).drop_duplicates("fg_material").set_index("fg_material")["description"].to_dict() if "description" in bom else {}
+
+    bom["qty"] = pd.to_numeric(bom["qty"], errors="coerce").fillna(1.0)
     bom_map: dict[str, list] = {}
     for _, r in bom.iterrows():
-        bom_map.setdefault(r["parent_material"], []).append(
-            (r["component_material"], float(r["qty_per"]), float(r["scrap_pct"]))
-        )
+        bom_map.setdefault(r["fg_material"], []).append((r["rm_material"], float(r["qty"])))
 
     parents = [p for p in bom_map if parent_codes is None or p in parent_codes]
 
@@ -68,7 +69,7 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25,
         rows.append(
             {
                 "material_code": parent,
-                "description": desc.get(parent),
+                "description": desc.get(parent) or bom_desc.get(parent),
                 "components": len(bom_map[parent]),
                 "rolled_up_cost": safe_round(rolled),
                 "standard_cost": safe_round(std),

@@ -150,22 +150,21 @@ def build_frames() -> dict[str, pd.DataFrame]:
 
     bom = pd.DataFrame(
         [
-            # FG-5001 = Pump Unit A
-            ("FG-5001", "SA-3001", 1, 0),
-            ("FG-5001", "CP-2004", 2, 5),
-            ("FG-5001", "PK-4001", 1, 0),
-            ("FG-5001", "CP-2002", 12, 2),
-            # FG-5002 = Pump Unit B
-            ("FG-5002", "SA-3001", 1, 0),
-            ("FG-5002", "CP-2003", 1, 0),
-            ("FG-5002", "CP-2004", 3, 5),
-            ("FG-5002", "PK-4001", 1, 0),
+            # product, fg_material, description, rm_material, rm_description, qty
+            ("Pump Assembly", "FG-5001", "Pump Unit A", "SA-3001", "Motor Assembly", 1),
+            ("Pump Assembly", "FG-5001", "Pump Unit A", "CP-2004", "Gasket Set", 2),
+            ("Pump Assembly", "FG-5001", "Pump Unit A", "PK-4001", "Carton Box", 1),
+            ("Pump Assembly", "FG-5001", "Pump Unit A", "CP-2002", "Fastener M6", 12),
+            ("Pump Assembly", "FG-5002", "Pump Unit B", "SA-3001", "Motor Assembly", 1),
+            ("Pump Assembly", "FG-5002", "Pump Unit B", "CP-2003", "Control Board", 1),
+            ("Pump Assembly", "FG-5002", "Pump Unit B", "CP-2004", "Gasket Set", 3),
+            ("Pump Assembly", "FG-5002", "Pump Unit B", "PK-4001", "Carton Box", 1),
             # SA-3001 = Motor Assembly (sub-assembly -> raw)
-            ("SA-3001", "RM-1002", 0.8, 3),
-            ("SA-3001", "CP-2001", 2, 1),
-            ("SA-3001", "RM-1003", 5, 2),
+            ("Motor Assembly", "SA-3001", "Motor Assembly", "RM-1002", "Aluminium Bar", 0.8),
+            ("Motor Assembly", "SA-3001", "Motor Assembly", "CP-2001", "Bearing 6203", 2),
+            ("Motor Assembly", "SA-3001", "Motor Assembly", "RM-1003", "Copper Wire", 5),
         ],
-        columns=["parent_material", "component_material", "qty_per", "scrap_pct"],
+        columns=["product", "fg_material", "description", "rm_material", "rm_description", "qty"],
     )
 
     production_plan = pd.DataFrame(

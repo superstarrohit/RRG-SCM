@@ -20,8 +20,8 @@ def _explode(fg: str, qty: float, bom: dict, seen: set, acc: dict) -> None:
     if fg in seen:
         return
     seen = seen | {fg}
-    for comp, qty_per, scrap in bom.get(fg, []):
-        req = qty * qty_per * (1 + scrap / 100.0)
+    for comp, qty_per in bom.get(fg, []):
+        req = qty * qty_per
         if comp in bom:
             _explode(comp, req, bom, seen, acc)
         else:
@@ -46,16 +46,18 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25,
     if plan.empty or bom.empty:
         return {**_empty(as_of), "filters": opts}
 
-    bom["qty_per"] = pd.to_numeric(bom["qty_per"], errors="coerce").fillna(1.0)
-    bom["scrap_pct"] = pd.to_numeric(bom["scrap_pct"], errors="coerce").fillna(0.0)
+    bom["qty"] = pd.to_numeric(bom["qty"], errors="coerce").fillna(1.0)
     bom_map: dict[str, list] = {}
     for _, r in bom.iterrows():
-        bom_map.setdefault(r["parent_material"], []).append(
-            (r["component_material"], float(r["qty_per"]), float(r["scrap_pct"]))
-        )
+        bom_map.setdefault(r["fg_material"], []).append((r["rm_material"], float(r["qty"])))
 
     plan["planned_qty"] = pd.to_numeric(plan["planned_qty"], errors="coerce").fillna(0)
     plan_by_fg = plan.groupby("material_code")["planned_qty"].sum()
+
+    # BOM's own descriptions, used when the material master doesn't cover a
+    # code (or hasn't been loaded at all).
+    fg_desc = bom.dropna(subset=["description"]).drop_duplicates("fg_material").set_index("fg_material")["description"].to_dict() if "description" in bom else {}
+    rm_desc = bom.dropna(subset=["rm_description"]).drop_duplicates("rm_material").set_index("rm_material")["rm_description"].to_dict() if "rm_description" in bom else {}
 
     fg_codes = allowed_codes(materials, commodity, buyer, material)
     if fg_codes is not None:
@@ -64,7 +66,7 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25,
         q_low = q.strip().lower()
         desc_map = materials.set_index("material_code")["description"].to_dict() if not materials.empty else {}
         plan_by_fg = plan_by_fg[[
-            q_low in str(fg).lower() or q_low in str(desc_map.get(fg) or "").lower()
+            q_low in str(fg).lower() or q_low in str(desc_map.get(fg) or fg_desc.get(fg) or "").lower()
             for fg in plan_by_fg.index
         ]]
 
@@ -88,7 +90,7 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25,
         component_rows.append(
             {
                 "component": comp,
-                "description": desc.get(comp),
+                "description": desc.get(comp) or rm_desc.get(comp),
                 "required": safe_round(req),
                 "on_hand": safe_round(on_hand.get(comp, 0.0)),
                 "incoming": safe_round(incoming.get(comp, 0.0)),
@@ -109,7 +111,7 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25,
         fg_rows.append(
             {
                 "material_code": fg,
-                "description": desc.get(fg),
+                "description": desc.get(fg) or fg_desc.get(fg),
                 "planned_qty": safe_round(qty),
                 "component_count": len(comps),
                 "at_risk": bool(constraining),
