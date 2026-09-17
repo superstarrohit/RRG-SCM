@@ -5,7 +5,7 @@ from datetime import date
 
 import numpy as np
 import pandas as pd
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -40,16 +40,21 @@ _MODEL_BY_NAME = {
 
 
 def load_df(db: Session, name: str) -> pd.DataFrame:
-    """Load a model table into a DataFrame (empty frame if no rows)."""
+    """Load a model table into a DataFrame (empty frame if no rows).
+
+    Reads via the DBAPI cursor (pd.read_sql_query) rather than materializing
+    ORM objects first — daily-snapshot dumps can run into the hundreds of
+    thousands of rows, and hydrating each one into a mapped Python object
+    before ever touching pandas made those loads an order of magnitude
+    slower than they needed to be. Uses the session's own connection so it
+    still sees whatever that session has written but not yet committed.
+    """
     model = _MODEL_BY_NAME[name]
-    rows = db.execute(select(model)).scalars().all()
-    if not rows:
-        cols = [c.name for c in model.__table__.columns]
+    cols = [c.name for c in model.__table__.columns]
+    df = pd.read_sql_query(select(model), db.connection())
+    if df.empty:
         return pd.DataFrame(columns=cols)
-    records = [
-        {c.name: getattr(r, c.name) for c in model.__table__.columns} for r in rows
-    ]
-    return pd.DataFrame.from_records(records)
+    return df[cols]
 
 
 def to_date(series: pd.Series) -> pd.Series:
@@ -164,6 +169,46 @@ def stock_by_material(stock: pd.DataFrame, warehouse_stock: pd.DataFrame, locati
     s = stock.copy()
     s["qty_on_hand"] = pd.to_numeric(s["qty_on_hand"], errors="coerce").fillna(0.0)
     return s.groupby("material_code")["qty_on_hand"].sum().to_dict()
+
+
+def latest_open_pos(db: Session) -> pd.DataFrame:
+    """Load the *current* state of every open PO line.
+
+    The ``open_pos`` dump is uploaded as one row per PO line *per day* it was
+    open (up to ~400k rows) — open_qty depletes over the line's life until
+    fully received. Materializing that whole table into pandas on every
+    request (the generic ``load_df`` path) took 15s+ per call, so this filters
+    to the latest ``snapshot_date`` per (po, item) in SQL instead, via a
+    ROW_NUMBER() window, and only pulls that much smaller result set into
+    Python. Columns are renamed to the internal names every analytics module
+    already expects (po_number, po_line, material_code, order_qty,
+    received_qty, unit_price, order_date, expected_date, supplier_name,
+    currency), so nothing downstream needs to know about the raw upload's own
+    column names.
+    """
+    rn = (
+        func.row_number()
+        .over(partition_by=(PurchaseOrder.po, PurchaseOrder.item), order_by=PurchaseOrder.snapshot_date.desc())
+        .label("rn")
+    )
+    sub = select(PurchaseOrder, rn).subquery()
+    rows = db.execute(select(sub).where(sub.c.rn == 1)).all()
+    cols = [c.name for c in PurchaseOrder.__table__.columns]
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    df = pd.DataFrame([dict(r._mapping) for r in rows])[cols]
+    df = df.rename(columns={
+        "po": "po_number", "item": "po_line", "material": "material_code",
+        "po_qty": "order_qty", "net_price": "unit_price",
+        "po_date": "order_date", "delivery_date": "expected_date",
+        "name": "supplier_name",
+    })
+    order_qty = pd.to_numeric(df.get("order_qty"), errors="coerce").fillna(0.0)
+    open_qty = pd.to_numeric(df.get("open_qty"), errors="coerce").fillna(0.0)
+    df["received_qty"] = (order_qty - open_qty).clip(lower=0)
+    if "currency" not in df:
+        df["currency"] = "INR"
+    return df
 
 
 def location_options(*frames: pd.DataFrame) -> list[str]:

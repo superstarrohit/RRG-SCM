@@ -10,7 +10,7 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from app.analytics.common import load_df, safe_round
+from app.analytics.common import latest_open_pos, load_df, safe_round
 from sqlalchemy.orm import Session
 
 
@@ -19,7 +19,7 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 20,
             material: str | None = None, supplier: str | None = None,
             location: str | None = None, q: str | None = None) -> dict:
     from app.analytics.common import allowed_codes, apply_search, filter_codes, filter_options, filter_supplier
-    pos = load_df(db, "open_pos")
+    pos = latest_open_pos(db)
     receipts = load_df(db, "receipts")
     suppliers = load_df(db, "suppliers")
     materials = load_df(db, "materials")

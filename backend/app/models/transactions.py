@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import Date, Float, Integer, String
+from sqlalchemy import Date, Float, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin
@@ -39,24 +39,38 @@ class WarehouseStock(Base, TimestampMixin):
 
 
 class PurchaseOrder(Base, TimestampMixin):
-    """Open purchase order lines (incoming materials pipeline)."""
+    """Daily snapshot of open purchase order lines (incoming materials pipeline).
+
+    Uploaded as one row per PO line *per day* — open_qty depletes over the
+    life of the line until it's fully received. Analytics that want "today's"
+    open-PO state should go through ``analytics.common.latest_open_pos()``,
+    which collapses this to one row per (po, item) at its latest snapshot
+    and renames columns to the internal names those modules expect.
+    """
 
     __tablename__ = "purchase_orders"
+    __table_args__ = (
+        # Speeds up latest_open_pos()'s ROW_NUMBER() OVER (PARTITION BY po, item …).
+        Index("ix_purchase_orders_po_item_snapshot", "po", "item", "snapshot_date"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    po_number: Mapped[str] = mapped_column(String(64), index=True)
-    po_line: Mapped[str | None] = mapped_column(String(32))
-    material_code: Mapped[str] = mapped_column(String(64), index=True)
-    supplier_code: Mapped[str | None] = mapped_column(String(64), index=True)
-
-    order_qty: Mapped[float] = mapped_column(Float, default=0.0)
-    received_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    snapshot_date: Mapped[date | None] = mapped_column(Date, index=True)
+    po: Mapped[str] = mapped_column(String(64), index=True)
+    name: Mapped[str | None] = mapped_column(String(255))  # supplier name
+    material: Mapped[str] = mapped_column(String(64), index=True)
+    description: Mapped[str | None] = mapped_column(String(255))
+    po_qty: Mapped[float] = mapped_column(Float, default=0.0)
+    po_value: Mapped[float] = mapped_column(Float, default=0.0)
+    delivery_date: Mapped[date | None] = mapped_column(Date, index=True)
+    item: Mapped[str | None] = mapped_column(String(32))
+    po_date: Mapped[date | None] = mapped_column(Date, index=True)
     open_qty: Mapped[float] = mapped_column(Float, default=0.0)
-    unit_price: Mapped[float] = mapped_column(Float, default=0.0)
-    currency: Mapped[str | None] = mapped_column(String(8), default="INR")
-
-    order_date: Mapped[date | None] = mapped_column(Date, index=True)
-    expected_date: Mapped[date | None] = mapped_column(Date, index=True)
+    net_price: Mapped[float] = mapped_column(Float, default=0.0)
+    supplier_code: Mapped[str | None] = mapped_column(String(64), index=True)
+    shipping: Mapped[str | None] = mapped_column(String(32))
+    tax: Mapped[str | None] = mapped_column(String(32))
+    created_by: Mapped[str | None] = mapped_column(String(120))
 
 
 class Receipt(Base, TimestampMixin):

@@ -19,10 +19,10 @@ def test_alias_mapping_open_pos():
         }
     )
     col_map = build_column_map(df, dump)
-    assert col_map["PO No"] == "po_number"
-    assert col_map["Material"] == "material_code"
+    assert col_map["PO No"] == "po"
+    assert col_map["Material"] == "material"
     assert col_map["Vendor"] == "supplier_code"
-    assert col_map["ETA"] == "expected_date"
+    assert col_map["ETA"] == "delivery_date"
 
 
 def test_transform_coerces_and_validates():

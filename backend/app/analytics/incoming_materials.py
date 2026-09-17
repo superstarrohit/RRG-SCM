@@ -14,13 +14,13 @@ import pandas as pd
 
 from app.analytics.common import (
     abc_classify, allowed_codes, apply_search, filter_codes, filter_supplier,
-    load_df, safe_round, today,
+    latest_open_pos, load_df, safe_round, today,
 )
 from sqlalchemy.orm import Session
 
 
 def _prepare(db, as_of, commodity=None, buyer=None, material=None, supplier=None, q=None):
-    pos = load_df(db, "open_pos")
+    pos = latest_open_pos(db)
     now = today(as_of)
     if pos.empty:
         return pos, now

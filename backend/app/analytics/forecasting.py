@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 
 from app.analytics.common import (
-    allowed_codes, apply_search, filter_codes, filter_options, load_df, safe_round,
-    stock_by_material,
+    allowed_codes, apply_search, filter_codes, filter_options, latest_open_pos, load_df,
+    safe_round, stock_by_material,
 )
 from sqlalchemy.orm import Session
 
@@ -21,7 +21,7 @@ def analyze(db: Session, *, as_of: date | None = None,
     materials = load_df(db, "materials")
     stock = load_df(db, "stock")
     warehouse_stock = load_df(db, "warehouse_stock")
-    pos = load_df(db, "open_pos")
+    pos = latest_open_pos(db)
     opts = filter_options(materials, commodity, buyer, material, supplier, location,
                           suppliers=load_df(db, "suppliers"))
 
