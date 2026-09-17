@@ -10,20 +10,12 @@ from dataclasses import dataclass, field
 
 from app.models import (
     BOMLine,
-    Demand,
-    Forecast,
     InventorySnapshot,
     LocationMaster,
     Material,
-    Movement,
     MovementMaster,
-    ProductionPlan,
     PurchaseOrder,
-    Receipt,
     SOBMaster,
-    Stock,
-    Supplier,
-    WarehouseStock,
 )
 
 
@@ -117,44 +109,6 @@ DUMP_TYPES: dict[str, DumpType] = {
             FieldSpec("description", ("material description", "desc")),
         ],
     ),
-    "suppliers": DumpType(
-        key="suppliers",
-        label="Supplier Master",
-        model=Supplier,
-        description="Vendor master with lead time and performance rating.",
-        fields=[
-            FieldSpec("supplier_code", ("supplier", "vendor", "vendor code", "supplier no"), required=True),
-            FieldSpec("name", ("supplier name", "vendor name")),
-            FieldSpec("country", ("nation",)),
-            FieldSpec("lead_time_days", ("lead time", "lt"), dtype="int"),
-            FieldSpec("rating", ("score", "performance"), dtype="float"),
-        ],
-    ),
-    "stock": DumpType(
-        key="stock",
-        label="Stock Snapshot",
-        model=Stock,
-        description="Current on-hand stock per material.",
-        fields=[
-            FieldSpec("material_code", ("material", "item", "sku", "part_no"), required=True),
-            FieldSpec("qty_on_hand", ("qty", "on hand", "stock", "quantity", "soh"), dtype="float", required=True),
-            FieldSpec("qty_blocked", ("blocked", "blocked qty"), dtype="float"),
-            FieldSpec("as_of_date", ("date", "snapshot date", "as of"), dtype="date"),
-        ],
-    ),
-    "warehouse_stock": DumpType(
-        key="warehouse_stock",
-        label="Warehouse Stock",
-        model=WarehouseStock,
-        description="Stock by warehouse / storage location.",
-        fields=[
-            FieldSpec("warehouse_code", ("warehouse", "plant", "wh", "site"), required=True),
-            FieldSpec("material_code", ("material", "item", "sku"), required=True),
-            FieldSpec("location", ("bin", "storage location", "sloc")),
-            FieldSpec("qty", ("quantity", "stock", "on hand"), dtype="float", required=True),
-            FieldSpec("as_of_date", ("date", "snapshot date"), dtype="date"),
-        ],
-    ),
     "open_pos": DumpType(
         key="open_pos",
         label="Open Purchase Orders",
@@ -177,45 +131,6 @@ DUMP_TYPES: dict[str, DumpType] = {
             FieldSpec("shipping", ("shipping mode", "mode of transport", "incoterm")),
             FieldSpec("tax", ("tax code", "gst")),
             FieldSpec("created_by", ("buyer", "requested by", "raised by")),
-        ],
-    ),
-    "receipts": DumpType(
-        key="receipts",
-        label="Goods Receipts (GRN)",
-        model=Receipt,
-        description="Received quantities against POs.",
-        fields=[
-            FieldSpec("receipt_id", ("grn", "grn no", "receipt", "document")),
-            FieldSpec("po_number", ("po", "po no", "order")),
-            FieldSpec("material_code", ("material", "sku"), required=True),
-            FieldSpec("supplier_code", ("supplier", "vendor")),
-            FieldSpec("qty", ("received", "quantity", "grn qty"), dtype="float", required=True),
-            FieldSpec("unit_price", ("price", "rate"), dtype="float"),
-            FieldSpec("receipt_date", ("date", "grn date", "posting date"), dtype="date"),
-        ],
-    ),
-    "demand": DumpType(
-        key="demand",
-        label="Demand / Requirements",
-        model=Demand,
-        description="Forecast, sales-order, or production demand per period.",
-        fields=[
-            FieldSpec("material_code", ("material", "sku"), required=True),
-            FieldSpec("period", ("date", "month", "week", "bucket"), dtype="date"),
-            FieldSpec("qty", ("quantity", "demand", "requirement"), dtype="float", required=True),
-            FieldSpec("demand_type", ("type", "source")),
-        ],
-    ),
-    "forecast": DumpType(
-        key="forecast",
-        label="Forecast (M1/M2/M3)",
-        model=Forecast,
-        description="Rolling monthly forecast per material (next three months).",
-        fields=[
-            FieldSpec("material_code", ("material", "sku", "rm_material_code"), required=True),
-            FieldSpec("m1_qty", ("m1", "m1_forecast", "month 1", "m1 f"), dtype="float"),
-            FieldSpec("m2_qty", ("m2", "m2_forecast", "month 2", "m2 f"), dtype="float"),
-            FieldSpec("m3_qty", ("m3", "m3_forecast", "month 3"), dtype="float"),
         ],
     ),
     "bom": DumpType(
@@ -243,31 +158,6 @@ DUMP_TYPES: dict[str, DumpType] = {
             FieldSpec("snapshot_date", ("date", "month", "period", "snapshot", "stock_date"), dtype="date", required=True),
             FieldSpec("qty", ("stock", "quantity", "on hand", "soh"), dtype="float"),
             FieldSpec("value", ("stock value", "amount", "inventory value"), dtype="float"),
-        ],
-    ),
-    "movements": DumpType(
-        key="movements",
-        label="Material Movements",
-        model=Movement,
-        description="Goods movements: receipts, issues, transfers and adjustments.",
-        fields=[
-            FieldSpec("material_code", ("material", "sku", "rm_material_code"), required=True),
-            FieldSpec("mvt_type", ("mvt", "movement", "movement type", "type")),
-            FieldSpec("description", ("desc", "text")),
-            FieldSpec("qty", ("quantity", "movement qty"), dtype="float", required=True),
-            FieldSpec("value", ("amount", "movement value"), dtype="float"),
-            FieldSpec("movement_date", ("date", "posting date"), dtype="date"),
-        ],
-    ),
-    "production_plan": DumpType(
-        key="production_plan",
-        label="Production Plan (FG)",
-        model=ProductionPlan,
-        description="Planned finished-goods production per period.",
-        fields=[
-            FieldSpec("material_code", ("material", "fg", "product"), required=True),
-            FieldSpec("period", ("date", "month", "week"), dtype="date"),
-            FieldSpec("planned_qty", ("qty", "quantity", "plan", "planned"), dtype="float", required=True),
         ],
     ),
 }

@@ -31,7 +31,7 @@ def test_dump_types_metadata(client):
     r = client.get("/api/meta/dump-types")
     assert r.status_code == 200
     keys = {d["key"] for d in r.json()}
-    assert {"open_pos", "stock", "materials", "bom"} <= keys
+    assert {"open_pos", "materials", "bom", "inventory_snapshots"} <= keys
 
 
 def test_upload_and_incoming_analysis(client):
@@ -42,9 +42,6 @@ def test_upload_and_incoming_analysis(client):
          "Category": ["Raw", "Comp"], "Cost": [10.0, 5.0]}
     )
     assert _upload(client, "materials", materials).status_code == 200
-
-    stock = pd.DataFrame({"Material": ["M1", "M2"], "On Hand": [100, 0]})
-    assert _upload(client, "stock", stock).status_code == 200
 
     pos = pd.DataFrame(
         {
@@ -80,23 +77,6 @@ def test_incoming_empty_state(client):
     r = client.get("/api/analytics/incoming")
     assert r.status_code == 200
     assert r.json()["empty"] is True
-
-
-def test_planning_shortage(client):
-    materials = pd.DataFrame(
-        {"Material": ["M1"], "Cost": [10.0], "SS": [20], "ROP": [50], "MOQ": [100]}
-    )
-    _upload(client, "materials", materials)
-    _upload(client, "stock", pd.DataFrame({"Material": ["M1"], "On Hand": [10]}))
-    _upload(client, "demand", pd.DataFrame({"Material": ["M1"], "Qty": [200]}))
-
-    r = client.get("/api/analytics/planning")
-    assert r.status_code == 200
-    data = r.json()
-    assert data["kpis"]["shortage_items"] == 1
-    assert data["shortages"][0]["material_code"] == "M1"
-    # net = demand(200) + ss(20) - onhand(10) = 210 -> order max(210, moq 100)=210
-    assert data["shortages"][0]["suggested_order"] == 210.0
 
 
 def test_bad_dump_type_rejected(client):

@@ -15,29 +15,6 @@ def _up(client, dump, df):
                        files={"file": (f"{dump}.csv", _csv(df), "text/csv")})
 
 
-def test_stock_monitoring_classifies(client):
-    _up(client, "materials", pd.DataFrame({
-        "Material": ["M1", "M2", "M3"],
-        "Commodity": ["Metals", "Metals", "Electro"],
-        "Buyer": ["A", "B", "A"],
-        "Cost": [10.0, 5.0, 2.0],
-        "Safety": [50, 20, 10],
-        "Refill Level": [80, 40, 20],
-        "Max Level": [200, 100, 50],
-    }))
-    _up(client, "stock", pd.DataFrame({"Material": ["M1", "M2", "M3"], "On Hand": [0, 30, 300]}))
-
-    r = client.get("/api/analytics/stock-monitoring")
-    assert r.status_code == 200
-    k = r.json()["kpis"]
-    assert k["stockout"] == 1     # M1 = 0
-    assert k["low"] == 1          # M2 = 30 (>=safety 20, <refill 40)
-    assert k["overstock"] == 1    # M3 = 300 (>max 50)
-    # commodity filter narrows the set
-    r2 = client.get("/api/analytics/stock-monitoring", params={"commodity": "Electro"})
-    assert r2.json()["kpis"]["materials"] == 1
-
-
 def test_inventory_monitoring_trend(client):
     _up(client, "materials", pd.DataFrame({"Material": ["M1"], "Commodity": ["Metals"], "Buyer": ["A"]}))
     _up(client, "inventory_snapshots", pd.DataFrame({

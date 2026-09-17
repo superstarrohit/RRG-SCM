@@ -94,16 +94,3 @@ class SOBMaster(Base, TimestampMixin):
     material: Mapped[str | None] = mapped_column(String(64), index=True)
     mat: Mapped[str | None] = mapped_column(String(128))  # commodity/category
     description: Mapped[str | None] = mapped_column(String(255))
-
-
-class Supplier(Base, TimestampMixin):
-    """Supplier / vendor master."""
-
-    __tablename__ = "suppliers"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    supplier_code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    name: Mapped[str | None] = mapped_column(String(255))
-    country: Mapped[str | None] = mapped_column(String(64))
-    lead_time_days: Mapped[int] = mapped_column(Integer, default=0)
-    rating: Mapped[float | None] = mapped_column(Float)  # 0-100 performance score

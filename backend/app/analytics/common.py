@@ -10,38 +10,22 @@ from sqlalchemy.orm import Session
 
 from app.models import (
     BOMLine,
-    Demand,
-    Forecast,
     InventorySnapshot,
     LocationMaster,
     Material,
-    Movement,
     MovementMaster,
-    ProductionPlan,
     PurchaseOrder,
-    Receipt,
     SOBMaster,
-    Stock,
-    Supplier,
-    WarehouseStock,
 )
 
 _MODEL_BY_NAME = {
     "materials": Material,
-    "suppliers": Supplier,
     "location_master": LocationMaster,
     "movement_master": MovementMaster,
     "sob_master": SOBMaster,
-    "stock": Stock,
-    "warehouse_stock": WarehouseStock,
     "open_pos": PurchaseOrder,
-    "receipts": Receipt,
-    "demand": Demand,
-    "forecast": Forecast,
     "inventory_snapshots": InventorySnapshot,
-    "movements": Movement,
     "bom": BOMLine,
-    "production_plan": ProductionPlan,
 }
 
 
@@ -55,7 +39,12 @@ def load_df(db: Session, name: str) -> pd.DataFrame:
     slower than they needed to be. Uses the session's own connection so it
     still sees whatever that session has written but not yet committed.
     """
-    model = _MODEL_BY_NAME[name]
+    model = _MODEL_BY_NAME.get(name)
+    if model is None:
+        # A former demo table that has since been removed. Callers still ask
+        # for it by name (stock, demand, forecast, …); hand back an empty
+        # frame so their `.empty` guards trip instead of raising.
+        return pd.DataFrame()
     cols = [c.name for c in model.__table__.columns]
     df = pd.read_sql_query(select(model), db.connection())
     if df.empty:
@@ -267,17 +256,12 @@ def latest_open_pos(db: Session) -> pd.DataFrame:
 def location_options_db(db: Session) -> list[str]:
     """Distinct site/warehouse values, queried directly (no full-table load).
 
-    Same values as ``location_options(load_df(db, "warehouse_stock"),
-    load_df(db, "inventory_snapshots"))``, but for the global slicer bar
-    (called on every page navigation) that's the only thing either table is
-    needed for — worth avoiding materializing a 700k-row inventory history
-    into pandas just to read one column off it.
+    Reads the distinct ``location`` values straight from the inventory
+    history — the global slicer bar is hit on every page navigation, so this
+    avoids materializing that 700k-row table into pandas just to read one
+    column off it.
     """
-    vals: set[str] = set()
-    vals |= set(db.execute(
-        select(WarehouseStock.warehouse_code).distinct().where(WarehouseStock.warehouse_code.isnot(None))
-    ).scalars().all())
-    vals |= set(db.execute(
+    vals = set(db.execute(
         select(InventorySnapshot.location).distinct().where(InventorySnapshot.location.isnot(None))
     ).scalars().all())
     return sorted(vals)

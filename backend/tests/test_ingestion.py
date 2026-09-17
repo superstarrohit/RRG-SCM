@@ -26,21 +26,21 @@ def test_alias_mapping_open_pos():
 
 
 def test_transform_coerces_and_validates():
-    dump = get_dump_type("stock")
+    dump = get_dump_type("materials")
     df = pd.DataFrame(
-        {"Material": ["M1", "M2", None], "On Hand": ["10", "20", "5"]}
+        {"Material": ["M1", "M2", None], "MAP": ["10", "20", "5"]}
     )
     records, report = transform(df, dump)
-    # The row with a null required material_code is dropped.
+    # The row with a null required rm_material_code is dropped.
     assert report["rows_in"] == 3
     assert report["rows_out"] == 2
-    assert records[0]["qty_on_hand"] == 10.0
+    assert records[0]["map"] == 10.0
     assert report["missing_required"] == []
 
 
 def test_missing_required_reported():
-    dump = get_dump_type("stock")
+    dump = get_dump_type("materials")
     df = pd.DataFrame({"foo": [1], "bar": [2]})
     records, report = transform(df, dump)
     assert records == []
-    assert "material_code" in report["missing_required"]
+    assert "rm_material_code" in report["missing_required"]

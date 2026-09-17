@@ -23,7 +23,8 @@ def _upload(client, dump, df, mode="replace", merge_keys=None):
 def _seed(client):
     _upload(client, "materials", pd.DataFrame(
         {"Material": ["M1", "M2"], "Description": ["A", "B"], "MAP": [10.0, 5.0]}))
-    _upload(client, "stock", pd.DataFrame({"Material": ["M1", "M2"], "On Hand": [100, 50]}))
+    _upload(client, "inventory_snapshots", pd.DataFrame(
+        {"Material": ["M1", "M2"], "Date": ["2026-01-01", "2026-01-01"], "Qty": [100, 50]}))
 
 
 def test_datasets_list(client):
@@ -79,13 +80,13 @@ def test_merge_upsert(client):
 def test_join(client):
     _seed(client)
     j = client.post("/api/data/join", json={
-        "left": "stock", "right": "materials",
+        "left": "inventory_snapshots", "right": "materials",
         "left_on": "material_code", "right_on": "rm_material_code", "how": "inner"})
     assert j.status_code == 200
     body = j.json()
     assert body["total"] == 2
     names = {c["name"] for c in body["columns"]}
-    assert "qty_on_hand" in names and "material_description" in names
+    assert "qty" in names and "material_description" in names
 
 
 def test_export_formats(client):
