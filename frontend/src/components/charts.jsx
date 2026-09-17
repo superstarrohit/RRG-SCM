@@ -1,6 +1,29 @@
 // Inline-SVG charts: Donut, vertical glow bars, glow line chart, status bars, meter.
 import React from "react";
 
+// Tracks a wrapper element's rendered width so a chart's SVG viewBox can
+// match its real pixel width exactly. Without this, viewBox stayed at a
+// fixed design width while CSS stretched the SVG to fill wider panels —
+// since height followed via the preserved aspect ratio, a chart in a wide
+// panel rendered far taller than its intended height (and than neighboring
+// cards), which is what made charts look oversized relative to everything
+// else on the page.
+function useMeasuredWidth(fallback) {
+  const ref = React.useRef(null);
+  const [width, setWidth] = React.useState(fallback);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width;
+      if (w) setWidth(w);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  return [ref, width];
+}
+
 // CSS-variable references, not static hex — SVG presentation attributes
 // (fill/stroke/stop-color) resolve var() same as any CSS property, so chart
 // colors follow the active [data-accent] theme automatically.
@@ -65,9 +88,11 @@ export function Donut({ segments, size = 168, thickness = 26, centerLabel, cente
 
 // ---- Vertical bar chart with glow ----
 export function VBars({ data, valueFormat = (v) => v, height = 240, color = PALETTE.purple }) {
+  const [wrapRef, measuredW] = useMeasuredWidth(560);
   if (!data.length) return <div className="empty">No data.</div>;
   const max = Math.max(1, ...data.map((d) => d.value || 0));
-  const W = Math.max(360, data.length * 92);
+  const minContentW = Math.max(360, data.length * 92);
+  const W = Math.max(measuredW, minContentW);
   const padL = 44, padB = 34, padT = 12;
   const chartH = height - padB - padT;
   const bw = Math.min(46, (W - padL) / data.length - 22);
@@ -75,8 +100,8 @@ export function VBars({ data, valueFormat = (v) => v, height = 240, color = PALE
   const ticks = 4;
   const gid = React.useId();
   return (
-    <div className="chart table-wrap">
-      <svg viewBox={`0 0 ${W} ${height}`} style={{ minWidth: W }}>
+    <div className="chart table-wrap" ref={wrapRef}>
+      <svg viewBox={`0 0 ${W} ${height}`} style={{ minWidth: minContentW, width: "100%", height }}>
         <defs>
           <linearGradient id={`vb-${gid}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity="0.95" />
@@ -120,9 +145,11 @@ export function VBars({ data, valueFormat = (v) => v, height = 240, color = PALE
 
 // ---- Line chart with glow + area ----
 export function LineChart({ data, valueFormat = (v) => v, height = 260, color = PALETTE.cyan }) {
+  const [wrapRef, measuredW] = useMeasuredWidth(720);
   if (data.length < 2) return <div className="empty">Not enough points.</div>;
   const max = Math.max(1, ...data.map((d) => d.value || 0));
-  const W = 720;
+  const minContentW = 560;
+  const W = Math.max(measuredW, minContentW);
   const padL = 52, padB = 34, padT = 14, padR = 14;
   const chartH = height - padB - padT;
   const chartW = W - padL - padR;
@@ -133,8 +160,8 @@ export function LineChart({ data, valueFormat = (v) => v, height = 260, color = 
   const ticks = 4;
   const gid = React.useId();
   return (
-    <div className="chart table-wrap">
-      <svg viewBox={`0 0 ${W} ${height}`} style={{ minWidth: 560 }}>
+    <div className="chart table-wrap" ref={wrapRef}>
+      <svg viewBox={`0 0 ${W} ${height}`} style={{ minWidth: minContentW, width: "100%", height }}>
         <defs>
           <linearGradient id={`la-${gid}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={color} stopOpacity="0.35" />
