@@ -51,6 +51,10 @@ def analyze(db: Session, *, as_of: date | None = None,
     # which isn't loaded yet — 0 / empty until it is. ---
     incoming_total, incoming_by_buyer, incoming_pending = _incoming_receipts(db, allowed, buyer_of, as_of)
 
+    # Buyer-wise trends for the ribbon charts (last 12 months).
+    inventory_ribbon = _inventory_ribbon(db, allowed, buyer_of, location,
+                                         has_filter=codes is not None or bool(q))
+
     suppliers_count = db.execute(
         select(func.count(func.distinct(SOBMaster.vendor_code)))
     ).scalar() or 0
@@ -67,8 +71,39 @@ def analyze(db: Session, *, as_of: date | None = None,
         },
         "inventory_by_buyer": inv_by_buyer,
         "incoming_by_buyer": incoming_by_buyer,
+        "inventory_ribbon": inventory_ribbon,
+        "incoming_ribbon": {"months": [], "series": []},
         "incoming_pending": incoming_pending,
     }
+
+
+def _inventory_ribbon(db, allowed: set, buyer_of: dict, location, has_filter: bool, n: int = 12):
+    """Buyer-wise inventory value at each month's last snapshot (last n months)."""
+    md = db.execute(
+        select(func.strftime("%Y-%m", InventorySnapshot.snapshot_date).label("m"),
+               func.max(InventorySnapshot.snapshot_date))
+        .group_by("m").order_by("m")
+    ).all()
+    md = md[-n:]
+    months, per_month = [], []
+    for m, dt in md:
+        stmt = select(InventorySnapshot.material_code, func.sum(InventorySnapshot.value)).where(
+            InventorySnapshot.snapshot_date == dt)
+        if location:
+            stmt = stmt.where(InventorySnapshot.location == location)
+        stmt = stmt.group_by(InventorySnapshot.material_code)
+        bb: dict[str, float] = {}
+        for code, val in db.execute(stmt).all():
+            if has_filter and code not in allowed:
+                continue
+            b = buyer_of.get(code) or "Unassigned"
+            bb[b] = bb.get(b, 0.0) + float(val or 0.0)
+        months.append(m)
+        per_month.append(bb)
+    buyers = sorted({b for bb in per_month for b in bb},
+                    key=lambda b: -sum(bb.get(b, 0.0) for bb in per_month))
+    series = [{"name": b, "values": [safe_round(bb.get(b, 0.0)) for bb in per_month]} for b in buyers]
+    return {"months": months, "series": series}
 
 
 def _inventory_today(db, allowed: set, buyer_of: dict, location, has_filter: bool):

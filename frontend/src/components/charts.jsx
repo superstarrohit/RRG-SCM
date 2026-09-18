@@ -108,6 +108,138 @@ export function Donut3D({ segments, size = 230, thickness = 40, depth = 22, cent
   );
 }
 
+// ---- Ribbon chart ----
+// A stacked-column series across a time axis, with each series' segments
+// linked between adjacent periods by a curved (cubic-bezier) ribbon — the
+// Power BI "ribbon chart" look. Within every period the biggest series sits
+// on top; the ribbons show how each series' share flows month to month.
+//   series: [{ name, values: number[] }]   (one value per month/period)
+//   months: string[]                        (period labels, x-axis)
+export function RibbonChart({ series, months, valueFormat = (v) => v, height = 300, colors }) {
+  const [wrapRef, measuredW] = useMeasuredWidth(760);
+  const list = (series || []).filter((s) => (s.values || []).some((v) => (v || 0) > 0));
+  const n = (months || []).length;
+  if (!list.length || n < 2) return <div className="empty">Not enough history to draw a ribbon chart.</div>;
+
+  const pal = colors && colors.length ? colors
+    : [PALETTE.purple, PALETTE.blue, PALETTE.cyan, PALETTE.green, PALETTE.amber, PALETTE.red, "var(--primary-2)"];
+  const colorOf = (i) => pal[i % pal.length];
+
+  const minContentW = Math.max(560, n * 104);
+  const W = Math.max(measuredW, minContentW);
+  const padL = 56, padR = 16, padT = 16, padB = 34;
+  const chartH = height - padT - padB;
+  const chartW = W - padL - padR;
+  const colGap = chartW / n;                 // slot width per period
+  const barW = Math.min(58, colGap * 0.5);   // stacked-column width
+  const cx = (i) => padL + colGap * i + colGap / 2;   // period center x
+
+  // Column total per period → shared y-scale across all periods.
+  const totals = months.map((_, i) => list.reduce((s, ser) => s + (ser.values[i] || 0), 0));
+  const max = Math.max(1, ...totals);
+  const yScale = (v) => (v / max) * chartH;
+
+  // For each period, rank series by that period's value (largest on top) and
+  // stack them. Record each series' top/bottom pixel y at that period so we
+  // can both draw its column segment and thread ribbons into neighbors.
+  // segs[periodIndex][seriesIndex] = { y0, y1 } (top, bottom) or null.
+  const segs = months.map((_, i) => {
+    const order = list.map((_, si) => si)
+      .filter((si) => (list[si].values[i] || 0) > 0)
+      .sort((a, b) => (list[b].values[i] || 0) - (list[a].values[i] || 0));
+    const out = new Array(list.length).fill(null);
+    let acc = 0;                              // stack downward from the top
+    for (const si of order) {
+      const h = yScale(list[si].values[i] || 0);
+      const y0 = padT + acc;
+      out[si] = { y0, y1: y0 + h };
+      acc += h;
+    }
+    return out;
+  });
+
+  const ticks = 4;
+  const gid = React.useId();
+
+  // A cubic-bezier band connecting a series' right edge in period i to its
+  // left edge in period i+1 (smooth S-curve between the two column stacks).
+  const ribbonPath = (si, i) => {
+    const a = segs[i][si], b = segs[i + 1][si];
+    if (!a || !b) return null;
+    const xR = cx(i) + barW / 2, xL = cx(i + 1) - barW / 2;
+    const mx = (xR + xL) / 2;
+    return `M ${xR} ${a.y0} C ${mx} ${a.y0}, ${mx} ${b.y0}, ${xL} ${b.y0} `
+         + `L ${xL} ${b.y1} C ${mx} ${b.y1}, ${mx} ${a.y1}, ${xR} ${a.y1} Z`;
+  };
+
+  return (
+    <div className="chart table-wrap" ref={wrapRef}>
+      <svg viewBox={`0 0 ${W} ${height}`} style={{ minWidth: minContentW, width: "100%", height }}>
+        <defs>
+          {list.map((_, si) => (
+            <linearGradient key={si} id={`rb-${gid}-${si}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={colorOf(si)} stopOpacity="0.98" />
+              <stop offset="100%" stopColor={colorOf(si)} stopOpacity="0.62" />
+            </linearGradient>
+          ))}
+        </defs>
+
+        {/* horizontal gridlines + value axis */}
+        {Array.from({ length: ticks + 1 }).map((_, i) => {
+          const y = padT + (chartH * i) / ticks;
+          const val = max * (1 - i / ticks);
+          return (
+            <g key={i}>
+              <line x1={padL} y1={y} x2={W - padR} y2={y} stroke="var(--border)" strokeWidth="1" />
+              <text x={padL - 8} y={y + 4} textAnchor="end" fontSize="10" fill="var(--muted)">
+                {valueFormat(val)}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* ribbons behind the columns */}
+        {months.slice(0, -1).map((_, i) =>
+          list.map((_, si) => {
+            const d = ribbonPath(si, i);
+            return d ? (
+              <path key={`${i}-${si}`} d={d} fill={colorOf(si)} opacity="0.28" />
+            ) : null;
+          })
+        )}
+
+        {/* stacked column segments */}
+        {months.map((_, i) =>
+          list.map((ser, si) => {
+            const s = segs[i][si];
+            if (!s) return null;
+            return (
+              <rect key={`${i}-${si}`} x={cx(i) - barW / 2} y={s.y0}
+                    width={barW} height={Math.max(s.y1 - s.y0, 1)} rx="4"
+                    fill={`url(#rb-${gid}-${si})`} />
+            );
+          })
+        )}
+
+        {/* period (x-axis) labels */}
+        {months.map((m, i) => (
+          <text key={i} x={cx(i)} y={height - padB + 18} textAnchor="middle"
+                fontSize="10.5" fill="var(--text-dim)">{m}</text>
+        ))}
+      </svg>
+
+      <div className="legend" style={{ marginTop: 10, flexWrap: "wrap", gap: 12 }}>
+        {list.map((s, si) => (
+          <div className="item" key={si}>
+            <span className="swatch" style={{ background: colorOf(si), borderRadius: 3 }} />
+            <span>{s.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ---- Donut chart ----
 export function Donut({ segments, size = 168, thickness = 26, centerLabel, centerValue }) {
   const total = segments.reduce((s, x) => s + (x.value || 0), 0) || 1;
