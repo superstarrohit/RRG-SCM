@@ -59,3 +59,26 @@ class InventorySnapshot(Base, TimestampMixin):
     snapshot_date: Mapped[date | None] = mapped_column(Date, index=True)
     qty: Mapped[float] = mapped_column(Float, default=0.0)
     value: Mapped[float] = mapped_column(Float, default=0.0)
+
+
+class WarehouseStock(Base, TimestampMixin):
+    """Daily warehouse-stock snapshot, per plant × storage location × material.
+
+    Uploaded as one row per (plant, storage_location, material) per day.
+    ``analytics.common.latest_warehouse_stock()`` collapses it to the most
+    recent snapshot and renames columns to the internal names
+    (material_code, warehouse_code, qty) the on-hand calculations expect.
+    """
+
+    __tablename__ = "warehouse_stock"
+    __table_args__ = (
+        Index("ix_warehouse_stock_key_date", "plant", "storage_location", "material", "stock_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    stock_date: Mapped[date | None] = mapped_column(Date, index=True)
+    plant: Mapped[str | None] = mapped_column(String(64), index=True)
+    storage_location: Mapped[str | None] = mapped_column(String(64), index=True)
+    material: Mapped[str] = mapped_column(String(64), index=True)
+    stock: Mapped[float] = mapped_column(Float, default=0.0)
+    value: Mapped[float] = mapped_column(Float, default=0.0)

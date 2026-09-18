@@ -12,7 +12,7 @@ from app.analytics import (
     material_planning,
     sourcing,
 )
-from app.analytics.common import materials_df, load_df, safe_round, stock_by_material
+from app.analytics.common import latest_warehouse_stock, materials_df, load_df, safe_round, stock_by_material
 from app.models import IngestionLog
 
 
@@ -28,7 +28,7 @@ def analyze(db: Session, *, as_of: date | None = None,
     srcing = sourcing.analyze(db, as_of=as_of, **kw)
 
     materials = materials_df(db)
-    warehouse_stock = load_df(db, "warehouse_stock")
+    warehouse_stock = latest_warehouse_stock(db)
     opts = filter_options(materials, commodity, buyer, material, supplier, location,
                           suppliers=load_df(db, "suppliers"),
                           locations=location_options(warehouse_stock))

@@ -11,6 +11,7 @@ from datetime import date
 import pandas as pd
 
 from app.analytics.common import (
+    latest_warehouse_stock,
     materials_df,
     allowed_codes, filter_options, latest_open_pos, load_df, safe_round, stock_by_material,
 )
@@ -36,7 +37,7 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25,
     plan = load_df(db, "production_plan")
     bom = load_df(db, "bom")
     stock = load_df(db, "stock")
-    warehouse_stock = load_df(db, "warehouse_stock")
+    warehouse_stock = latest_warehouse_stock(db)
     pos = latest_open_pos(db)
     materials = materials_df(db)
     opts = filter_options(materials, commodity, buyer, material, supplier, location,

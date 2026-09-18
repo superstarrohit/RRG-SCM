@@ -16,6 +16,7 @@ from app.models import (
     MovementMaster,
     PurchaseOrder,
     SOBMaster,
+    WarehouseStock,
 )
 
 _MODEL_BY_NAME = {
@@ -24,6 +25,7 @@ _MODEL_BY_NAME = {
     "movement_master": MovementMaster,
     "sob_master": SOBMaster,
     "open_pos": PurchaseOrder,
+    "warehouse_stock": WarehouseStock,
     "inventory_snapshots": InventorySnapshot,
     "bom": BOMLine,
 }
@@ -192,20 +194,19 @@ def apply_search(df: pd.DataFrame, q: str | None, columns: list[str]) -> pd.Data
 def stock_by_material(stock: pd.DataFrame, warehouse_stock: pd.DataFrame, location=None) -> dict:
     """On-hand qty per material_code.
 
-    With no location selected, sums the company-wide Stock dump. With a
-    location (site/warehouse) selected, sources the number from Warehouse
-    Stock for that warehouse instead — so the Location slicer genuinely
-    changes the figures, matching the reference report's Location Master
-    filter. Matches on ``warehouse_code``, not WarehouseStock's finer-grained
-    bin-level ``location`` field.
+    Warehouse Stock (latest daily snapshot) is the on-hand source: with no
+    location selected it sums every plant/storage location, and with a
+    location (plant) selected it sums only that plant — so the Location
+    slicer genuinely changes the figures. Falls back to a legacy company-wide
+    ``stock`` dump (qty_on_hand) only if no warehouse stock is present.
     """
-    if location and not warehouse_stock.empty and "warehouse_code" in warehouse_stock:
-        df = warehouse_stock[warehouse_stock["warehouse_code"] == location]
-        if "qty" in df:
-            df = df.copy()
-            df["qty"] = pd.to_numeric(df["qty"], errors="coerce").fillna(0.0)
-            return df.groupby("material_code")["qty"].sum().to_dict()
-        return {}
+    if not warehouse_stock.empty and "material_code" in warehouse_stock and "qty" in warehouse_stock:
+        df = warehouse_stock
+        if location and "warehouse_code" in df:
+            df = df[df["warehouse_code"] == location]
+        df = df.copy()
+        df["qty"] = pd.to_numeric(df["qty"], errors="coerce").fillna(0.0)
+        return df.groupby("material_code")["qty"].sum().to_dict()
     if stock.empty or "qty_on_hand" not in stock:
         return {}
     s = stock.copy()
@@ -253,16 +254,46 @@ def latest_open_pos(db: Session) -> pd.DataFrame:
     return df
 
 
+def latest_warehouse_stock(db: Session) -> pd.DataFrame:
+    """Load the *current* on-hand per plant × storage location × material.
+
+    The warehouse-stock dump is a daily history (~360k rows). This collapses
+    it to the latest ``stock_date`` per (plant, storage_location, material)
+    in SQL, then renames to the internal names the on-hand calculations use
+    (material_code, warehouse_code, qty), keeping storage_location and value.
+    """
+    rn = (
+        func.row_number()
+        .over(
+            partition_by=(WarehouseStock.plant, WarehouseStock.storage_location, WarehouseStock.material),
+            order_by=WarehouseStock.stock_date.desc(),
+        )
+        .label("rn")
+    )
+    sub = select(WarehouseStock, rn).subquery()
+    rows = db.execute(select(sub).where(sub.c.rn == 1)).all()
+    cols = [c.name for c in WarehouseStock.__table__.columns]
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    df = pd.DataFrame([dict(r._mapping) for r in rows])[cols]
+    return df.rename(columns={
+        "material": "material_code", "plant": "warehouse_code", "stock": "qty",
+    })
+
+
 def location_options_db(db: Session) -> list[str]:
     """Distinct site/warehouse values, queried directly (no full-table load).
 
-    Reads the distinct ``location`` values straight from the inventory
-    history — the global slicer bar is hit on every page navigation, so this
-    avoids materializing that 700k-row table into pandas just to read one
-    column off it.
+    Reads the distinct plant/location values straight from the warehouse
+    stock and inventory history — the global slicer bar is hit on every page
+    navigation, so this avoids materializing those large tables into pandas
+    just to read one column off each.
     """
     vals = set(db.execute(
         select(InventorySnapshot.location).distinct().where(InventorySnapshot.location.isnot(None))
+    ).scalars().all())
+    vals |= set(db.execute(
+        select(WarehouseStock.plant).distinct().where(WarehouseStock.plant.isnot(None))
     ).scalars().all())
     return sorted(vals)
 

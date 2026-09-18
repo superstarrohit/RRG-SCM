@@ -16,6 +16,7 @@ from app.models import (
     MovementMaster,
     PurchaseOrder,
     SOBMaster,
+    WarehouseStock,
 )
 
 
@@ -157,6 +158,20 @@ DUMP_TYPES: dict[str, DumpType] = {
             FieldSpec("location", ("plant", "warehouse", "site")),
             FieldSpec("snapshot_date", ("date", "month", "period", "snapshot", "stock_date"), dtype="date", required=True),
             FieldSpec("qty", ("stock", "quantity", "on hand", "soh"), dtype="float"),
+            FieldSpec("value", ("stock value", "amount", "inventory value"), dtype="float"),
+        ],
+    ),
+    "warehouse_stock": DumpType(
+        key="warehouse_stock",
+        label="Warehouse Stock",
+        model=WarehouseStock,
+        description="Daily on-hand stock per plant × storage location × material.",
+        fields=[
+            FieldSpec("stock_date", ("date", "snapshot", "as of"), dtype="date"),
+            FieldSpec("plant", ("warehouse", "warehouse_code", "site", "wh"), required=True),
+            FieldSpec("storage_location", ("sloc", "bin", "location_code", "location")),
+            FieldSpec("material", ("material_code", "sku", "rm_material_code"), required=True),
+            FieldSpec("stock", ("qty", "quantity", "on hand", "soh"), dtype="float"),
             FieldSpec("value", ("stock value", "amount", "inventory value"), dtype="float"),
         ],
     ),

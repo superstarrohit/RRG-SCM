@@ -8,7 +8,11 @@ from app.models.master import (
     SOBMaster,
 )
 from app.models.product import BOMLine
-from app.models.transactions import InventorySnapshot, PurchaseOrder
+from app.models.transactions import (
+    InventorySnapshot,
+    PurchaseOrder,
+    WarehouseStock,
+)
 
 __all__ = [
     "Base",
@@ -19,6 +23,7 @@ __all__ = [
     "SOBMaster",
     "PurchaseOrder",
     "InventorySnapshot",
+    "WarehouseStock",
     "BOMLine",
     "IngestionLog",
 ]

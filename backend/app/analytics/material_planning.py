@@ -10,7 +10,7 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
-from app.analytics.common import materials_df, latest_open_pos, load_df, safe_round, stock_by_material, today
+from app.analytics.common import latest_warehouse_stock, materials_df, latest_open_pos, load_df, safe_round, stock_by_material, today
 from sqlalchemy.orm import Session
 
 
@@ -21,7 +21,7 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 20,
     from app.analytics.common import allowed_codes, apply_search, filter_codes, filter_options, filter_supplier, location_options
     materials = materials_df(db)
     stock = load_df(db, "stock")
-    warehouse_stock = load_df(db, "warehouse_stock")
+    warehouse_stock = latest_warehouse_stock(db)
     pos = latest_open_pos(db)
     demand = load_df(db, "demand")
     now = today(as_of)

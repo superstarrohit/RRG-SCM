@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from app.analytics.common import (
+    latest_warehouse_stock,
     materials_df,
     allowed_codes, apply_search, filter_codes, filter_options, latest_open_pos, load_df,
     safe_round, stock_by_material,
@@ -21,7 +22,7 @@ def analyze(db: Session, *, as_of: date | None = None,
     fc = load_df(db, "forecast")
     materials = materials_df(db)
     stock = load_df(db, "stock")
-    warehouse_stock = load_df(db, "warehouse_stock")
+    warehouse_stock = latest_warehouse_stock(db)
     pos = latest_open_pos(db)
     opts = filter_options(materials, commodity, buyer, material, supplier, location,
                           suppliers=load_df(db, "suppliers"))
