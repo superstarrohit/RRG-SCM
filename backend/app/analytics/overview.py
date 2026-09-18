@@ -6,7 +6,7 @@ inventory value and incoming value.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
 from sqlalchemy import func, select
@@ -75,6 +75,72 @@ def analyze(db: Session, *, as_of: date | None = None,
         "incoming_ribbon": {"months": [], "series": []},
         "incoming_pending": incoming_pending,
     }
+
+
+def _to_date(v):
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    return datetime.strptime(str(v)[:10], "%Y-%m-%d").date()
+
+
+def _bucket(d: date, grain: str):
+    """(sort_key, display_label) for a date at the requested granularity."""
+    if grain == "weekly":
+        y, w, _ = d.isocalendar()
+        return f"{y}-W{w:02d}", f"W{w:02d} {y}"
+    if grain == "monthly":
+        return d.strftime("%Y-%m"), d.strftime("%b %Y")
+    if grain == "quarterly":
+        qtr = (d.month - 1) // 3 + 1
+        return f"{d.year}-Q{qtr}", f"Q{qtr} {d.year}"
+    if grain == "yearly":
+        return f"{d.year}", str(d.year)
+    # daily (default)
+    return d.isoformat(), d.strftime("%d %b %Y")
+
+
+def inventory_timeseries(db: Session, *, grain: str = "monthly",
+                         commodity: str | None = None, buyer: str | None = None,
+                         material: str | None = None, supplier: str | None = None,
+                         location: str | None = None, q: str | None = None) -> dict:
+    """Inventory value over time at daily / weekly / monthly / quarterly / yearly
+    granularity, scoped to the active slicers.
+
+    Inventory is a stock, so each period is represented by its *last* daily
+    snapshot (period-end inventory), not a sum across the period.
+    """
+    grain = grain if grain in {"daily", "weekly", "monthly", "quarterly", "yearly"} else "monthly"
+    materials = materials_df(db)
+    codes = allowed_codes(materials, commodity, buyer, material)
+    fmats = apply_search(
+        materials if codes is None else materials[materials["material_code"].isin(codes)],
+        q, ["material_code", "description"],
+    )
+    has_filter = codes is not None or bool(q)
+    allowed = set(fmats["material_code"]) if not fmats.empty else set()
+
+    stmt = select(InventorySnapshot.snapshot_date, func.sum(InventorySnapshot.value))
+    if location:
+        stmt = stmt.where(InventorySnapshot.location == location)
+    if has_filter:
+        if not allowed:
+            return {"grain": grain, "points": []}
+        stmt = stmt.where(InventorySnapshot.material_code.in_(allowed))
+    stmt = stmt.group_by(InventorySnapshot.snapshot_date).order_by(InventorySnapshot.snapshot_date)
+
+    daily = [(_to_date(row[0]), float(row[1] or 0.0)) for row in db.execute(stmt).all()]
+    if not daily:
+        return {"grain": grain, "points": []}
+
+    # Collapse to one value per period: the latest snapshot within it.
+    buckets: dict[str, dict] = {}
+    for d, val in daily:                       # daily list is already ascending
+        key, label = _bucket(d, grain)
+        buckets[key] = {"label": label, "date": d.isoformat(), "value": safe_round(val)}
+    points = [buckets[k] for k in sorted(buckets)]
+    return {"grain": grain, "points": points}
 
 
 def _inventory_ribbon(db, allowed: set, buyer_of: dict, location, has_filter: bool, n: int = 12):

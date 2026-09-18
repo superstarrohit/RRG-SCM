@@ -52,6 +52,15 @@ def get_overview(as_of: str | None = Query(None), f: dict = Depends(_slicers),
     return overview.analyze(db, as_of=_as_of(as_of), **f)
 
 
+@router.get("/inventory-timeseries")
+def get_inventory_timeseries(
+    grain: str = Query("monthly", pattern="^(daily|weekly|monthly|quarterly|yearly)$"),
+    f: dict = Depends(_slicers),
+    db: Session = Depends(get_db),
+) -> dict:
+    return overview.inventory_timeseries(db, grain=grain, **f)
+
+
 @router.get("/incoming")
 def get_incoming(
     as_of: str | None = Query(None),

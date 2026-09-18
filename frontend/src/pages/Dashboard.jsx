@@ -3,11 +3,55 @@ import { api } from "../api/client.js";
 import {
   KpiCard, Panel, PageHeader, Loading, ErrorState, useApi, fmtNum, fmtMoneyM,
 } from "../components/ui.jsx";
-import { RibbonChart } from "../components/charts.jsx";
+import { RibbonChart, LineChart, PALETTE } from "../components/charts.jsx";
 import { useFilters } from "../components/filters.jsx";
 
 // Ribbon values are large ₹ amounts — label the axis in ₹ millions.
 const axisM = (v) => "₹" + Number(v / 1e6).toLocaleString("en-IN", { maximumFractionDigits: 0 }) + "M";
+
+const GRAINS = [
+  { key: "daily", label: "Daily" },
+  { key: "weekly", label: "Weekly" },
+  { key: "monthly", label: "Monthly" },
+  { key: "quarterly", label: "Quarterly" },
+  { key: "yearly", label: "Yearly" },
+];
+
+// Inventory value over time, with a daily→yearly drilldown toggle. Fetches
+// its own series (respecting the global slicers) whenever the grain changes.
+function InventoryTrend({ f }) {
+  const [grain, setGrain] = React.useState("monthly");
+  const { loading, data, error } = useApi(
+    () => api.inventoryTimeseries({ ...f.params, grain }),
+    [f.key, grain],
+  );
+  const points = (data?.points || []).map((p) => ({ label: p.label, value: p.value }));
+
+  return (
+    <Panel title="Inventory Value Trend">
+      <div className="seg-toggle" role="tablist" aria-label="Time granularity">
+        {GRAINS.map((g) => (
+          <button
+            key={g.key}
+            role="tab"
+            aria-selected={grain === g.key}
+            className={`seg-btn${grain === g.key ? " active" : ""}`}
+            onClick={() => setGrain(g.key)}
+          >
+            {g.label}
+          </button>
+        ))}
+      </div>
+      {error
+        ? <ErrorState error={error} />
+        : loading
+          ? <div className="empty">Loading trend…</div>
+          : points.length < 2
+            ? <div className="empty">Not enough history at this granularity.</div>
+            : <LineChart data={points} valueFormat={axisM} color={PALETTE.cyan} />}
+    </Panel>
+  );
+}
 
 export default function Dashboard() {
   const f = useFilters();
@@ -38,6 +82,9 @@ export default function Dashboard() {
         <KpiCard label="Suppliers" value={fmtNum(k.suppliers)} icon="handshake" tone="purple" />
         <KpiCard label="Materials" value={fmtNum(k.materials)} icon="cube" tone="cyan" />
       </div>
+
+      {/* Inventory value over time with daily→yearly drilldown. */}
+      <InventoryTrend f={f} />
 
       {/* Ribbon charts need the full page width for their time axis, so each
           sits in its own full-width row rather than a two-up grid. */}

@@ -5,9 +5,11 @@ import {
   Loading, ErrorState, EmptyState, useApi, fmtNum,
 } from "../components/ui.jsx";
 import { VBars, PALETTE } from "../components/charts.jsx";
+import { useFilters } from "../components/filters.jsx";
 
 export default function FGPlanning() {
-  const { loading, data, error } = useApi(() => api.fgPlanning({ top_n: 50 }), []);
+  const f = useFilters();
+  const { loading, data, error } = useApi(() => api.fgPlanning({ top_n: 50, ...f.params }), [f.key]);
   if (loading) return <Loading />;
   if (error) return <ErrorState error={error} />;
 

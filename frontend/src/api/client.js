@@ -54,6 +54,7 @@ export const api = {
   sourceTypes: () => get("/meta/source-types"),
   ingestionLog: () => get("/ingest/log"),
   overview: (p) => get("/analytics/overview", p),
+  inventoryTimeseries: (p) => get("/analytics/inventory-timeseries", p),
   incoming: (p) => get("/analytics/incoming", p),
   planning: (p) => get("/analytics/planning", p),
   sourcing: (p) => get("/analytics/sourcing", p),

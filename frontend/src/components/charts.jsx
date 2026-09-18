@@ -108,6 +108,13 @@ export function Donut3D({ segments, size = 230, thickness = 40, depth = 22, cent
   );
 }
 
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// "2025-10" → "Oct 2025"; anything else passes through unchanged.
+export function fmtMonthLabel(m) {
+  const mm = /^(\d{4})-(\d{2})$/.exec(String(m || ""));
+  return mm ? `${MONTH_ABBR[+mm[2] - 1]} ${mm[1]}` : m;
+}
+
 // ---- Ribbon chart ----
 // A stacked-column series across a time axis, with each series' segments
 // linked between adjacent periods by a curved (cubic-bezier) ribbon — the
@@ -139,20 +146,22 @@ export function RibbonChart({ series, months, valueFormat = (v) => v, height = 3
   const max = Math.max(1, ...totals);
   const yScale = (v) => (v / max) * chartH;
 
-  // For each period, rank series by that period's value (largest on top) and
-  // stack them. Record each series' top/bottom pixel y at that period so we
-  // can both draw its column segment and thread ribbons into neighbors.
+  // For each period, rank series by that period's value and stack them from
+  // the baseline (0 axis) upward — an upright stacked column, largest on top.
+  // Record each series' top/bottom pixel y so we can draw its column segment
+  // and thread ribbons into neighbors.
   // segs[periodIndex][seriesIndex] = { y0, y1 } (top, bottom) or null.
+  const baseY = padT + chartH;               // the 0 axis (bottom)
   const segs = months.map((_, i) => {
     const order = list.map((_, si) => si)
       .filter((si) => (list[si].values[i] || 0) > 0)
-      .sort((a, b) => (list[b].values[i] || 0) - (list[a].values[i] || 0));
+      .sort((a, b) => (list[a].values[i] || 0) - (list[b].values[i] || 0)); // smallest first
     const out = new Array(list.length).fill(null);
-    let acc = 0;                              // stack downward from the top
+    let acc = 0;                              // stack upward from the baseline
     for (const si of order) {
       const h = yScale(list[si].values[i] || 0);
-      const y0 = padT + acc;
-      out[si] = { y0, y1: y0 + h };
+      const y1 = baseY - acc;                 // bottom of this segment
+      out[si] = { y0: y1 - h, y1 };
       acc += h;
     }
     return out;
@@ -221,10 +230,10 @@ export function RibbonChart({ series, months, valueFormat = (v) => v, height = 3
           })
         )}
 
-        {/* period (x-axis) labels */}
+        {/* period (x-axis) labels — YYYY-MM shown as "Mon YYYY" */}
         {months.map((m, i) => (
           <text key={i} x={cx(i)} y={height - padB + 18} textAnchor="middle"
-                fontSize="10.5" fill="var(--text-dim)">{m}</text>
+                fontSize="10.5" fill="var(--text-dim)">{fmtMonthLabel(m)}</text>
         ))}
       </svg>
 
@@ -390,14 +399,23 @@ export function LineChart({ data, valueFormat = (v) => v, height = 260, color = 
         <polygon points={area} fill={`url(#la-${gid})`} />
         <polyline points={pts} fill="none" stroke={color} strokeWidth="3"
                   strokeLinejoin="round" strokeLinecap="round" filter={`url(#lg-${gid})`} />
-        {data.map((d, i) => (
-          <g key={i}>
-            <circle cx={x(i)} cy={y(d.value)} r="4" fill={color} filter={`url(#lg-${gid})`} />
-            <text x={x(i)} y={height - padB + 16} textAnchor="middle" fontSize="10.5" fill="var(--text-dim)">
-              {d.label}
-            </text>
-          </g>
-        ))}
+        {/* With many points (e.g. daily), thin the dots and x-labels so the
+            axis stays legible — always keep the first and last. */}
+        {data.map((d, i) => {
+          const showDot = data.length <= 60;
+          const step = Math.max(1, Math.ceil(data.length / 14));
+          const showLabel = i % step === 0 || i === data.length - 1;
+          return (
+            <g key={i}>
+              {showDot && <circle cx={x(i)} cy={y(d.value)} r="4" fill={color} filter={`url(#lg-${gid})`} />}
+              {showLabel && (
+                <text x={x(i)} y={height - padB + 16} textAnchor="middle" fontSize="10.5" fill="var(--text-dim)">
+                  {d.label}
+                </text>
+              )}
+            </g>
+          );
+        })}
       </svg>
     </div>
   );

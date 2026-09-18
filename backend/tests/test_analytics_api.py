@@ -82,3 +82,44 @@ def test_incoming_empty_state(client):
 def test_bad_dump_type_rejected(client):
     r = _upload(client, "not_a_type", pd.DataFrame({"a": [1]}))
     assert r.status_code == 400
+
+
+def test_inventory_timeseries_drilldown(client):
+    materials = pd.DataFrame(
+        {"Material": ["M1", "M2"], "Description": ["Part 1", "Part 2"],
+         "Buyer": ["Alice", "Bob"], "Commodity": ["Raw", "Comp"]}
+    )
+    assert _upload(client, "materials", materials).status_code == 200
+
+    # Two months of snapshots; each period is represented by its last date.
+    snaps = pd.DataFrame(
+        {
+            "Material": ["M1", "M2", "M1", "M2", "M1", "M2"],
+            "Date": ["2025-01-15", "2025-01-15",
+                     "2025-01-31", "2025-01-31",
+                     "2025-02-28", "2025-02-28"],
+            "On Hand": [10, 20, 12, 22, 15, 25],
+            "Inventory Value": [100, 200, 120, 220, 150, 250],
+        }
+    )
+    assert _upload(client, "inventory_snapshots", snaps).status_code == 200
+
+    # Monthly: Jan uses the 31st (120+220=340), Feb uses the 28th (150+250=400).
+    r = client.get("/api/analytics/inventory-timeseries", params={"grain": "monthly"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["grain"] == "monthly"
+    pts = {p["label"]: p["value"] for p in data["points"]}
+    assert pts["Jan 2025"] == 340.0
+    assert pts["Feb 2025"] == 400.0
+
+    # Daily keeps every snapshot date.
+    r = client.get("/api/analytics/inventory-timeseries", params={"grain": "daily"})
+    assert len(r.json()["points"]) == 3
+
+    # Buyer slicer scopes the series to that buyer's materials only (M1 → Alice).
+    r = client.get("/api/analytics/inventory-timeseries",
+                   params={"grain": "monthly", "buyer": "Alice"})
+    pts = {p["label"]: p["value"] for p in r.json()["points"]}
+    assert pts["Jan 2025"] == 120.0
+    assert pts["Feb 2025"] == 150.0
