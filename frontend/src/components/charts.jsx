@@ -37,6 +37,77 @@ export const PALETTE = {
   grey: "var(--muted)",
 };
 
+// ---- Pseudo-3D donut ----
+// Tilts the ring into an ellipse and extrudes it downward (stacked darker
+// copies of each arc) for a 3D disc look. Colors are CSS vars, so the darker
+// "side wall" is derived with color-mix() and follows the active theme.
+export function Donut3D({ segments, size = 230, thickness = 40, depth = 22, centerLabel, centerValue }) {
+  const segs = (segments || []).filter((s) => (s.value || 0) > 0);
+  const total = segs.reduce((s, x) => s + (x.value || 0), 0) || 1;
+  const r = (size - thickness) / 2 - 6;
+  const c = 2 * Math.PI * r;
+  const cx = size / 2;
+  const tilt = 0.56;                       // ellipse squash → perspective
+  const H = size * tilt + depth + 16;      // svg height incl. extrusion
+
+  // One flat ring of arcs at a given y-offset and color transform.
+  const ring = (yOff, colorFn, key) => {
+    let offset = 0;
+    return segs.map((s, i) => {
+      const len = ((s.value || 0) / total) * c;
+      const el = (
+        <circle
+          key={`${key}-${i}`} cx={cx} cy={cx} r={r} fill="none"
+          stroke={colorFn(s.color)} strokeWidth={thickness}
+          strokeDasharray={`${len} ${c - len}`} strokeDashoffset={-offset}
+          transform={`rotate(-90 ${cx} ${cx})`} strokeLinecap="butt"
+          style={{ transform: `translateY(${yOff}px)` }}
+        />
+      );
+      offset += len;
+      return el;
+    });
+  };
+
+  const wall = (color) => `color-mix(in srgb, ${color} 55%, black)`;
+  const depthLayers = [];
+  for (let d = depth; d >= 1; d--) depthLayers.push(ring(d, wall, `d${d}`));
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 22, flexWrap: "wrap" }}>
+      <svg viewBox={`0 0 ${size} ${H}`} style={{ width: size, height: H, flexShrink: 0, overflow: "visible" }}>
+        <defs>
+          <filter id="d3d-shadow" x="-30%" y="-30%" width="160%" height="180%">
+            <feDropShadow dx="0" dy="6" stdDeviation="7" floodColor="rgba(0,0,0,0.45)" />
+          </filter>
+        </defs>
+        <g transform={`translate(${cx} ${size / 2}) scale(1 ${tilt}) translate(${-cx} ${-size / 2})`}
+           filter="url(#d3d-shadow)">
+          {depthLayers}
+          {ring(0, (col) => col, "top")}
+        </g>
+        {centerValue !== undefined && (
+          <text x={cx} y={size / 2 * tilt + 2} textAnchor="middle" fontSize="17" fontWeight="800" fill="var(--text)">
+            {centerValue}
+          </text>
+        )}
+      </svg>
+      <div className="legend" style={{ flexDirection: "column", gap: 8 }}>
+        {segs.map((s, i) => (
+          <div className="item" key={i}>
+            <span className="swatch" style={{ background: s.color, borderRadius: "50%" }} />
+            <span style={{ minWidth: 96 }}>{s.label}</span>
+            <span className="mono" style={{ color: "var(--text)", fontWeight: 700 }}>
+              {Math.round(((s.value || 0) / total) * 100)}%
+            </span>
+          </div>
+        ))}
+        {!segs.length && <div className="empty">No data.</div>}
+      </div>
+    </div>
+  );
+}
+
 // ---- Donut chart ----
 export function Donut({ segments, size = 168, thickness = 26, centerLabel, centerValue }) {
   const total = segments.reduce((s, x) => s + (x.value || 0), 0) || 1;

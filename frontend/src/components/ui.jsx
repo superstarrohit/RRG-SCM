@@ -24,6 +24,14 @@ export function fmtMoney(n) {
 export const fmtPct = (n, d = 1) =>
   n === null || n === undefined ? "—" : `${fmtNum(n, d)}%`;
 
+// ₹ value shown in millions, e.g. ₹6,095.2 M — for the dashboard KPIs.
+export function fmtMoneyM(n) {
+  if (n === null || n === undefined || Number.isNaN(n)) return "—";
+  return "₹" + Number(n / 1e6).toLocaleString("en-IN", {
+    minimumFractionDigits: 1, maximumFractionDigits: 1,
+  }) + " M";
+}
+
 // KPI card with gradient icon chip + optional delta pill.
 export function KpiCard({ label, value, sub, icon = "box", tone = "purple", delta }) {
   return (

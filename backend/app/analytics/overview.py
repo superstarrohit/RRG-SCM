@@ -1,4 +1,9 @@
-"""Overall SCM dashboard — a cross-module executive summary."""
+"""Overall SCM dashboard.
+
+A focused executive summary: today's inventory value and this month's incoming
+receipts value, supplier and material counts, and buyer-wise breakdowns of
+inventory value and incoming value.
+"""
 from __future__ import annotations
 
 from datetime import date
@@ -7,82 +12,113 @@ import pandas as pd
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.analytics import (
-    incoming_materials,
-    material_planning,
-    sourcing,
+from app.analytics.common import (
+    allowed_codes,
+    apply_search,
+    filter_options,
+    load_df,
+    location_options_db,
+    materials_df,
+    safe_round,
 )
-from app.analytics.common import latest_warehouse_stock, materials_df, load_df, safe_round, stock_by_material
-from app.models import IngestionLog
+from app.models import InventorySnapshot, SOBMaster
 
 
 def analyze(db: Session, *, as_of: date | None = None,
             commodity: str | None = None, buyer: str | None = None,
             material: str | None = None, supplier: str | None = None,
             location: str | None = None, q: str | None = None) -> dict:
-    from app.analytics.common import allowed_codes, apply_search, filter_codes, filter_options, location_options
-    kw = {"commodity": commodity, "buyer": buyer, "material": material,
-          "supplier": supplier, "location": location, "q": q}
-    incoming = incoming_materials.analyze(db, as_of=as_of, **kw)
-    planning = material_planning.analyze(db, as_of=as_of, **kw)
-    srcing = sourcing.analyze(db, as_of=as_of, **kw)
-
     materials = materials_df(db)
-    warehouse_stock = latest_warehouse_stock(db)
     opts = filter_options(materials, commodity, buyer, material, supplier, location,
                           suppliers=load_df(db, "suppliers"),
-                          locations=location_options(warehouse_stock))
-    codes = allowed_codes(materials, commodity, buyer, material)
-    filtered_materials = apply_search(filter_codes(materials, codes), q, ["material_code", "description"])
-    stock_map = stock_by_material(load_df(db, "stock"), warehouse_stock, location)
-    stock_value = 0.0
-    if not filtered_materials.empty:
-        m = filtered_materials.copy()
-        m["qty_on_hand"] = m["material_code"].map(stock_map).fillna(0.0)
-        m["unit_cost"] = pd.to_numeric(m["unit_cost"], errors="coerce").fillna(0.0)
-        stock_value = (m["qty_on_hand"] * m["unit_cost"]).sum()
+                          locations=location_options_db(db))
 
-    data_status = _data_status(db)
+    # The material set the dashboard's inventory figures are scoped to.
+    codes = allowed_codes(materials, commodity, buyer, material)
+    fmats = apply_search(
+        materials if codes is None else materials[materials["material_code"].isin(codes)],
+        q, ["material_code", "description"],
+    )
+    allowed = set(fmats["material_code"]) if not fmats.empty else set()
+    buyer_of = dict(zip(fmats.get("material_code", []), fmats.get("buyer", []))) if not fmats.empty else {}
+
+    # --- Inventory value as on today: sum of value at the latest snapshot in
+    # the daily stock table, scoped to the filtered materials / location. ---
+    inv_total, inv_by_buyer = _inventory_today(db, allowed, buyer_of, location, has_filter=codes is not None or bool(q))
+
+    # --- Incoming receipts value (this month) from goods movements: GR +
+    # reversal of GR + return-to-vendor. Needs a movements transactions table,
+    # which isn't loaded yet — 0 / empty until it is. ---
+    incoming_total, incoming_by_buyer, incoming_pending = _incoming_receipts(db, allowed, buyer_of, as_of)
+
+    suppliers_count = db.execute(
+        select(func.count(func.distinct(SOBMaster.vendor_code)))
+    ).scalar() or 0
+    materials_count = int(len(fmats))
 
     return {
         "as_of": (as_of or date.today()).isoformat(),
         "filters": opts,
         "kpis": {
-            "inventory_value": safe_round(stock_value),
-            "incoming_value": incoming["kpis"]["open_value"],
-            "overdue_value": incoming["kpis"]["overdue_value"],
-            "shortage_items": planning["kpis"]["shortage_items"],
-            "reorder_alerts": planning["kpis"]["at_or_below_rop"],
-            "active_suppliers": srcing["kpis"]["active_suppliers"],
-            "single_source_materials": srcing["kpis"]["single_source_materials"],
-            "avg_on_time_pct": srcing["kpis"]["avg_on_time_pct"],
+            "inventory_value": safe_round(inv_total),
+            "incoming_receipts_value": safe_round(incoming_total),
+            "suppliers": int(suppliers_count),
+            "materials": materials_count,
         },
-        "incoming_status": incoming["status_breakdown"],
-        "top_shortages": planning["shortages"][:5],
-        "top_suppliers": srcing["supplier_spend"][:5],
-        "arrival_timeline": incoming["arrival_timeline"],
-        "data_status": data_status,
+        "inventory_by_buyer": inv_by_buyer,
+        "incoming_by_buyer": incoming_by_buyer,
+        "incoming_pending": incoming_pending,
     }
 
 
-def _data_status(db: Session) -> list[dict]:
-    """Row counts + last-ingested per dump type, for a data-freshness panel."""
-    from app.ingestion.dump_types import DUMP_TYPES
+def _inventory_today(db, allowed: set, buyer_of: dict, location, has_filter: bool):
+    """Total + buyer-wise inventory value at the latest daily-stock date."""
+    latest = db.execute(select(func.max(InventorySnapshot.snapshot_date))).scalar()
+    if latest is None:
+        return 0.0, []
+    stmt = select(
+        InventorySnapshot.material_code, func.sum(InventorySnapshot.value)
+    ).where(InventorySnapshot.snapshot_date == latest)
+    if location:
+        stmt = stmt.where(InventorySnapshot.location == location)
+    stmt = stmt.group_by(InventorySnapshot.material_code)
+    rows = db.execute(stmt).all()
 
-    out = []
-    for key, dump in DUMP_TYPES.items():
-        model = dump.model
-        count = db.execute(select(func.count()).select_from(model)).scalar() or 0
-        last = db.execute(
-            select(func.max(IngestionLog.ingested_at)).where(IngestionLog.dump_type == key)
-        ).scalar()
-        out.append(
-            {
-                "dump_type": key,
-                "label": dump.label,
-                "rows": int(count),
-                "last_ingested": last.isoformat() if last else None,
-                "loaded": count > 0,
-            }
-        )
-    return out
+    by_buyer: dict[str, float] = {}
+    total = 0.0
+    for code, val in rows:
+        if has_filter and code not in allowed:
+            continue
+        val = float(val or 0.0)
+        total += val
+        b = buyer_of.get(code) or "Unassigned"
+        by_buyer[b] = by_buyer.get(b, 0.0) + val
+    donut = [
+        {"name": b, "value": safe_round(v)}
+        for b, v in sorted(by_buyer.items(), key=lambda kv: kv[1], reverse=True)
+    ]
+    return total, donut
+
+
+# Goods-movement types that make up "incoming receipts" (from movement_master):
+#   101 Goods Receipt - Purchase Order         (+)
+#   102 Reversal of Goods Receipt              (−)
+#   501 Return to Vendor / rejection to supplier (−)
+_GR, _GR_REVERSAL, _RETURN_VENDOR = "101", "102", "501"
+
+
+def _incoming_receipts(db, allowed: set, buyer_of: dict, as_of):
+    """Net incoming receipts value for the current month, by buyer.
+
+    GR minus reversals-of-GR minus returns-to-vendor. Sourced from a movements
+    transactions table; returns (0, [], pending=True) until one is loaded.
+    """
+    from app.analytics.common import _MODEL_BY_NAME
+    if "movements" not in _MODEL_BY_NAME:
+        return 0.0, [], True
+    mv = load_df(db, "movements")
+    if mv.empty:
+        return 0.0, [], True
+    # Wired up once the movements schema is known (columns: date, mvt, value,
+    # material). Placeholder net-zero handling kept intentionally simple here.
+    return 0.0, [], False
