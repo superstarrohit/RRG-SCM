@@ -222,6 +222,27 @@ a { color: inherit; text-decoration: none; }
 }
 .seg-btn:hover { color: var(--text); background: var(--surface-3); }
 .seg-btn.active { color: #fff; background: var(--primary); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); }
+
+/* Power BI-style drilldown toolbar (breadcrumb + drill-up + chart type). */
+.drill-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.drill-up {
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  width: 30px; height: 30px; border-radius: 8px; cursor: pointer; font-size: 12px;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background var(--dur-fast) var(--ease);
+}
+.drill-up:hover:not(:disabled) { background: var(--surface-3); }
+.drill-up:disabled { opacity: 0.4; cursor: not-allowed; }
+.crumbs { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.crumb {
+  border: none; background: transparent; color: var(--muted); cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; padding: 4px 8px; border-radius: 7px;
+}
+.crumb:hover { color: var(--text); background: var(--surface-2); }
+.crumb.active { color: var(--text); background: var(--surface-3); cursor: default; }
+.crumb-sep { color: var(--muted); opacity: 0.6; }
+.drill-level { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.drill-hint { color: var(--muted); opacity: 0.75; font-weight: 400; }
 .btn.ghost { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); box-shadow: none; }
 .btn.ghost:hover { background: var(--surface-hover); border-color: var(--border-strong); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; filter: none !important; }

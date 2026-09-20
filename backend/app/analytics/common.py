@@ -298,6 +298,29 @@ def location_options_db(db: Session) -> list[str]:
     return sorted(vals)
 
 
+def supplier_options_db(db: Session) -> pd.DataFrame:
+    """Distinct vendors (code + name) from the SOB master, for the supplier slicer."""
+    rows = db.execute(
+        select(SOBMaster.vendor_code, func.max(SOBMaster.vendor_name))
+        .where(SOBMaster.vendor_code.isnot(None))
+        .group_by(SOBMaster.vendor_code).order_by(SOBMaster.vendor_code)
+    ).all()
+    return pd.DataFrame(
+        [{"supplier_code": vc, "name": nm or ""} for vc, nm in rows],
+        columns=["supplier_code", "name"],
+    )
+
+
+def supplier_material_codes(db: Session, supplier) -> set | None:
+    """Material codes sourced from a given vendor (via the SOB master), or None."""
+    if not supplier:
+        return None
+    rows = db.execute(
+        select(SOBMaster.material).where(SOBMaster.vendor_code == supplier)
+    ).scalars().all()
+    return {r for r in rows if r}
+
+
 def location_options(*frames: pd.DataFrame) -> list[str]:
     """Union of distinct site/warehouse values across one or more frames.
 

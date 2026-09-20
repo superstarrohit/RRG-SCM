@@ -3,52 +3,79 @@ import { api } from "../api/client.js";
 import {
   KpiCard, Panel, PageHeader, Loading, ErrorState, useApi, fmtNum, fmtMoneyM,
 } from "../components/ui.jsx";
-import { RibbonChart, LineChart, PALETTE } from "../components/charts.jsx";
+import { RibbonChart, LineChart, DrillBars, PALETTE } from "../components/charts.jsx";
 import { useFilters } from "../components/filters.jsx";
 
 // Ribbon values are large ₹ amounts — label the axis in ₹ millions.
 const axisM = (v) => "₹" + Number(v / 1e6).toLocaleString("en-IN", { maximumFractionDigits: 0 }) + "M";
 
-const GRAINS = [
-  { key: "daily", label: "Daily" },
-  { key: "weekly", label: "Weekly" },
-  { key: "monthly", label: "Monthly" },
-  { key: "quarterly", label: "Quarterly" },
-  { key: "yearly", label: "Yearly" },
-];
+// Power BI–style hierarchy: each level drills into the next.
+const HIER = ["yearly", "quarterly", "monthly", "daily"];
+const LEVEL_NAME = { yearly: "Year", quarterly: "Quarter", monthly: "Month", daily: "Day" };
 
-// Inventory value over time, with a daily→yearly drilldown toggle. Fetches
-// its own series (respecting the global slicers) whenever the grain changes.
-function InventoryTrend({ f }) {
-  const [grain, setGrain] = React.useState("monthly");
+// Inventory value over time with a Power BI-style click-to-drill hierarchy
+// (Year → Quarter → Month → Day). Clicking a bar drills into that period;
+// the breadcrumb and ▲ button drill back up. Respects the global slicers.
+function InventoryDrilldown({ f }) {
+  // Each frame scopes one level to a parent period's date window.
+  const [stack, setStack] = React.useState([{ level: "yearly", label: "All" }]);
+  const [chart, setChart] = React.useState("bar");
+  const cur = stack[stack.length - 1];
+  const nextLevel = HIER[HIER.indexOf(cur.level) + 1] || null;
+
+  // Reset the drill path whenever the global filters change.
+  React.useEffect(() => { setStack([{ level: "yearly", label: "All" }]); }, [f.key]);
+
   const { loading, data, error } = useApi(
-    () => api.inventoryTimeseries({ ...f.params, grain }),
-    [f.key, grain],
+    () => api.inventoryTimeseries({ ...f.params, grain: cur.level, start: cur.start, end: cur.end }),
+    [f.key, cur.level, cur.start, cur.end],
   );
-  const points = (data?.points || []).map((p) => ({ label: p.label, value: p.value }));
+  const points = data?.points || [];
+
+  const drillInto = (p) => {
+    if (!nextLevel) return;
+    setStack((s) => [...s, { level: nextLevel, start: p.start, end: p.end, label: p.label }]);
+  };
+  const jumpTo = (i) => setStack((s) => s.slice(0, i + 1));
+  const drillUp = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
 
   return (
     <Panel title="Inventory Value Trend">
-      <div className="seg-toggle" role="tablist" aria-label="Time granularity">
-        {GRAINS.map((g) => (
-          <button
-            key={g.key}
-            role="tab"
-            aria-selected={grain === g.key}
-            className={`seg-btn${grain === g.key ? " active" : ""}`}
-            onClick={() => setGrain(g.key)}
-          >
-            {g.label}
-          </button>
-        ))}
+      <div className="drill-bar">
+        <button className="drill-up" onClick={drillUp} disabled={stack.length === 1}
+                title="Drill up" aria-label="Drill up">▲</button>
+        <nav className="crumbs" aria-label="Drilldown path">
+          {stack.map((fr, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <span className="crumb-sep">›</span>}
+              <button className={`crumb${i === stack.length - 1 ? " active" : ""}`}
+                      onClick={() => jumpTo(i)}>{fr.label}</button>
+            </React.Fragment>
+          ))}
+        </nav>
+        <span className="drill-level">
+          by {LEVEL_NAME[cur.level]}
+          {nextLevel && <span className="drill-hint"> · click a bar to drill into {LEVEL_NAME[nextLevel].toLowerCase()}s</span>}
+        </span>
+        <span style={{ flex: 1 }} />
+        <div className="seg-toggle" role="tablist" aria-label="Chart type">
+          {[["bar", "Bars"], ["line", "Line"]].map(([k, lbl]) => (
+            <button key={k} role="tab" aria-selected={chart === k}
+                    className={`seg-btn${chart === k ? " active" : ""}`}
+                    onClick={() => setChart(k)}>{lbl}</button>
+          ))}
+        </div>
       </div>
       {error
         ? <ErrorState error={error} />
         : loading
           ? <div className="empty">Loading trend…</div>
-          : points.length < 2
-            ? <div className="empty">Not enough history at this granularity.</div>
-            : <LineChart data={points} valueFormat={axisM} color={PALETTE.cyan} />}
+          : !points.length
+            ? <div className="empty">No inventory history in this period.</div>
+            : chart === "bar"
+              ? <DrillBars data={points} valueFormat={axisM} color={PALETTE.cyan}
+                           onBar={drillInto} clickable={!!nextLevel} />
+              : <LineChart data={points} valueFormat={axisM} color={PALETTE.cyan} />}
     </Panel>
   );
 }
@@ -83,8 +110,8 @@ export default function Dashboard() {
         <KpiCard label="Materials" value={fmtNum(k.materials)} icon="cube" tone="cyan" />
       </div>
 
-      {/* Inventory value over time with daily→yearly drilldown. */}
-      <InventoryTrend f={f} />
+      {/* Inventory value over time with Power BI-style click-to-drill. */}
+      <InventoryDrilldown f={f} />
 
       {/* Ribbon charts need the full page width for their time axis, so each
           sits in its own full-width row rather than a two-up grid. */}

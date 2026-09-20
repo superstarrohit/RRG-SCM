@@ -355,6 +355,76 @@ export function VBars({ data, valueFormat = (v) => v, height = 240, color = PALE
   );
 }
 
+// ---- Clickable bar chart (drives the Power BI-style drilldown) ----
+// Renders value-labelled bars; clicking a bar calls onBar(item) so the parent
+// can drill into that period. `clickable` toggles the cursor/hover affordance.
+export function DrillBars({ data, valueFormat = (v) => v, height = 300, color = PALETTE.cyan, onBar, clickable = true }) {
+  const [wrapRef, measuredW] = useMeasuredWidth(720);
+  if (!data.length) return <div className="empty">No data.</div>;
+  const max = Math.max(1, ...data.map((d) => d.value || 0));
+  const minContentW = Math.max(420, data.length * (data.length > 20 ? 40 : 74));
+  const W = Math.max(measuredW, minContentW);
+  const padL = 56, padB = 40, padT = 22;
+  const chartH = height - padB - padT;
+  const gap = (W - padL) / data.length;
+  const bw = Math.min(56, gap - (data.length > 20 ? 8 : 20));
+  const ticks = 4;
+  const gid = React.useId();
+  const many = data.length > 16;
+  return (
+    <div className="chart table-wrap" ref={wrapRef}>
+      <svg viewBox={`0 0 ${W} ${height}`} style={{ minWidth: minContentW, width: "100%", height }}>
+        <defs>
+          <linearGradient id={`db-${gid}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.98" />
+            <stop offset="100%" stopColor={color} stopOpacity="0.40" />
+          </linearGradient>
+          <filter id={`dbg-${gid}`} x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="3.5" result="b" />
+            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+        {Array.from({ length: ticks + 1 }).map((_, i) => {
+          const y = padT + (chartH * i) / ticks;
+          const val = max * (1 - i / ticks);
+          return (
+            <g key={i}>
+              <line x1={padL} y1={y} x2={W} y2={y} stroke="var(--border)" strokeWidth="1" />
+              <text x={padL - 8} y={y + 4} textAnchor="end" fontSize="10" fill="var(--muted)">
+                {valueFormat(val)}
+              </text>
+            </g>
+          );
+        })}
+        {data.map((d, i) => {
+          const h = ((d.value || 0) / max) * chartH;
+          const x = padL + gap * i + (gap - bw) / 2;
+          const y = padT + chartH - h;
+          const step = Math.max(1, Math.ceil(data.length / 16));
+          const showLabel = !many || i % step === 0 || i === data.length - 1;
+          return (
+            <g key={i} onClick={onBar ? () => onBar(d) : undefined}
+               style={{ cursor: clickable && onBar ? "pointer" : "default" }}>
+              {/* full-height hit area so the whole column is clickable */}
+              <rect x={padL + gap * i} y={padT} width={gap} height={chartH} fill="transparent" />
+              <rect x={x} y={y} width={Math.max(bw, 2)} height={Math.max(h, 1)} rx="6"
+                    fill={`url(#db-${gid})`} filter={`url(#dbg-${gid})`} />
+              {!many && (
+                <text x={x + bw / 2} y={y - 6} textAnchor="middle" fontSize="10.5"
+                      fontWeight="700" fill="var(--text)">{valueFormat(d.value)}</text>
+              )}
+              {showLabel && (
+                <text x={padL + gap * i + gap / 2} y={height - padB + 16} textAnchor="middle"
+                      fontSize="10.5" fill="var(--text-dim)">{d.label}</text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 // ---- Line chart with glow + area ----
 export function LineChart({ data, valueFormat = (v) => v, height = 260, color = PALETTE.cyan }) {
   const [wrapRef, measuredW] = useMeasuredWidth(720);

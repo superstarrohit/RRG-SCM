@@ -6,7 +6,7 @@ inventory value and incoming value.
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pandas as pd
 from sqlalchemy import func, select
@@ -16,12 +16,21 @@ from app.analytics.common import (
     allowed_codes,
     apply_search,
     filter_options,
-    load_df,
     location_options_db,
     materials_df,
     safe_round,
+    supplier_material_codes,
+    supplier_options_db,
 )
 from app.models import InventorySnapshot, SOBMaster
+
+
+def _apply_supplier(db: Session, codes, supplier):
+    """Intersect the current code set with the vendor's materials (SOB master)."""
+    sup = supplier_material_codes(db, supplier)
+    if sup is None:
+        return codes
+    return sup if codes is None else (codes & sup)
 
 
 def analyze(db: Session, *, as_of: date | None = None,
@@ -30,11 +39,13 @@ def analyze(db: Session, *, as_of: date | None = None,
             location: str | None = None, q: str | None = None) -> dict:
     materials = materials_df(db)
     opts = filter_options(materials, commodity, buyer, material, supplier, location,
-                          suppliers=load_df(db, "suppliers"),
+                          suppliers=supplier_options_db(db),
                           locations=location_options_db(db))
 
     # The material set the dashboard's inventory figures are scoped to.
     codes = allowed_codes(materials, commodity, buyer, material)
+    codes = _apply_supplier(db, codes, supplier)
+    has_filter = codes is not None or bool(q)
     fmats = apply_search(
         materials if codes is None else materials[materials["material_code"].isin(codes)],
         q, ["material_code", "description"],
@@ -44,7 +55,7 @@ def analyze(db: Session, *, as_of: date | None = None,
 
     # --- Inventory value as on today: sum of value at the latest snapshot in
     # the daily stock table, scoped to the filtered materials / location. ---
-    inv_total, inv_by_buyer = _inventory_today(db, allowed, buyer_of, location, has_filter=codes is not None or bool(q))
+    inv_total, inv_by_buyer = _inventory_today(db, allowed, buyer_of, location, has_filter=has_filter)
 
     # --- Incoming receipts value (this month) from goods movements: GR +
     # reversal of GR + return-to-vendor. Needs a movements transactions table,
@@ -53,7 +64,7 @@ def analyze(db: Session, *, as_of: date | None = None,
 
     # Buyer-wise trends for the ribbon charts (last 12 months).
     inventory_ribbon = _inventory_ribbon(db, allowed, buyer_of, location,
-                                         has_filter=codes is not None or bool(q))
+                                         has_filter=has_filter)
 
     suppliers_count = db.execute(
         select(func.count(func.distinct(SOBMaster.vendor_code)))
@@ -85,35 +96,46 @@ def _to_date(v):
     return datetime.strptime(str(v)[:10], "%Y-%m-%d").date()
 
 
+def _month_end(y: int, m: int) -> date:
+    return (date(y + (m == 12), (m % 12) + 1, 1) - timedelta(days=1))
+
+
 def _bucket(d: date, grain: str):
-    """(sort_key, display_label) for a date at the requested granularity."""
+    """(sort_key, display_label, period_start, period_end) for a date."""
     if grain == "weekly":
         y, w, _ = d.isocalendar()
-        return f"{y}-W{w:02d}", f"W{w:02d} {y}"
+        monday = date.fromisocalendar(y, w, 1)
+        return f"{y}-W{w:02d}", f"W{w:02d} {y}", monday, monday + timedelta(days=6)
     if grain == "monthly":
-        return d.strftime("%Y-%m"), d.strftime("%b %Y")
+        return (d.strftime("%Y-%m"), d.strftime("%b %Y"),
+                date(d.year, d.month, 1), _month_end(d.year, d.month))
     if grain == "quarterly":
         qtr = (d.month - 1) // 3 + 1
-        return f"{d.year}-Q{qtr}", f"Q{qtr} {d.year}"
+        sm = (qtr - 1) * 3 + 1
+        return (f"{d.year}-Q{qtr}", f"Q{qtr} {d.year}",
+                date(d.year, sm, 1), _month_end(d.year, sm + 2))
     if grain == "yearly":
-        return f"{d.year}", str(d.year)
+        return f"{d.year}", str(d.year), date(d.year, 1, 1), date(d.year, 12, 31)
     # daily (default)
-    return d.isoformat(), d.strftime("%d %b %Y")
+    return d.isoformat(), d.strftime("%d %b %Y"), d, d
 
 
 def inventory_timeseries(db: Session, *, grain: str = "monthly",
+                         start: str | None = None, end: str | None = None,
                          commodity: str | None = None, buyer: str | None = None,
                          material: str | None = None, supplier: str | None = None,
                          location: str | None = None, q: str | None = None) -> dict:
     """Inventory value over time at daily / weekly / monthly / quarterly / yearly
-    granularity, scoped to the active slicers.
+    granularity, scoped to the active slicers and an optional date window.
 
     Inventory is a stock, so each period is represented by its *last* daily
-    snapshot (period-end inventory), not a sum across the period.
+    snapshot (period-end inventory), not a sum across the period. `start`/`end`
+    bound the window — used to drill a parent period into its child periods.
     """
     grain = grain if grain in {"daily", "weekly", "monthly", "quarterly", "yearly"} else "monthly"
     materials = materials_df(db)
     codes = allowed_codes(materials, commodity, buyer, material)
+    codes = _apply_supplier(db, codes, supplier)
     fmats = apply_search(
         materials if codes is None else materials[materials["material_code"].isin(codes)],
         q, ["material_code", "description"],
@@ -124,6 +146,10 @@ def inventory_timeseries(db: Session, *, grain: str = "monthly",
     stmt = select(InventorySnapshot.snapshot_date, func.sum(InventorySnapshot.value))
     if location:
         stmt = stmt.where(InventorySnapshot.location == location)
+    if start:
+        stmt = stmt.where(InventorySnapshot.snapshot_date >= start)
+    if end:
+        stmt = stmt.where(InventorySnapshot.snapshot_date <= end)
     if has_filter:
         if not allowed:
             return {"grain": grain, "points": []}
@@ -137,8 +163,10 @@ def inventory_timeseries(db: Session, *, grain: str = "monthly",
     # Collapse to one value per period: the latest snapshot within it.
     buckets: dict[str, dict] = {}
     for d, val in daily:                       # daily list is already ascending
-        key, label = _bucket(d, grain)
-        buckets[key] = {"label": label, "date": d.isoformat(), "value": safe_round(val)}
+        key, label, ps, pe = _bucket(d, grain)
+        buckets[key] = {"key": key, "label": label, "date": d.isoformat(),
+                        "start": ps.isoformat(), "end": pe.isoformat(),
+                        "value": safe_round(val)}
     points = [buckets[k] for k in sorted(buckets)]
     return {"grain": grain, "points": points}
 
@@ -214,7 +242,7 @@ def _incoming_receipts(db, allowed: set, buyer_of: dict, as_of):
     GR minus reversals-of-GR minus returns-to-vendor. Sourced from a movements
     transactions table; returns (0, [], pending=True) until one is loaded.
     """
-    from app.analytics.common import _MODEL_BY_NAME
+    from app.analytics.common import _MODEL_BY_NAME, load_df
     if "movements" not in _MODEL_BY_NAME:
         return 0.0, [], True
     mv = load_df(db, "movements")

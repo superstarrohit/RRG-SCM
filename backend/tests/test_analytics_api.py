@@ -123,3 +123,40 @@ def test_inventory_timeseries_drilldown(client):
     pts = {p["label"]: p["value"] for p in r.json()["points"]}
     assert pts["Jan 2025"] == 120.0
     assert pts["Feb 2025"] == 150.0
+
+    # Drilldown: start/end bound the window; points carry period bounds.
+    r = client.get("/api/analytics/inventory-timeseries",
+                   params={"grain": "monthly", "start": "2025-02-01", "end": "2025-02-28"})
+    pts = r.json()["points"]
+    assert [p["label"] for p in pts] == ["Feb 2025"]
+    assert pts[0]["start"] == "2025-02-01" and pts[0]["end"] == "2025-02-28"
+
+
+def test_supplier_slicer_and_filter(client):
+    materials = pd.DataFrame(
+        {"Material": ["M1", "M2"], "Description": ["Part 1", "Part 2"],
+         "Buyer": ["Alice", "Bob"]}
+    )
+    assert _upload(client, "materials", materials).status_code == 200
+
+    sob = pd.DataFrame(
+        {"vendor_code": ["V1", "V2"], "vendor_name": ["Acme Ltd", "Globex"],
+         "material": ["M1", "M2"], "share": [100, 100]}
+    )
+    assert _upload(client, "sob_master", sob).status_code == 200
+
+    snaps = pd.DataFrame(
+        {"Material": ["M1", "M2"], "Date": ["2025-01-31", "2025-01-31"],
+         "Inventory Value": [500, 900]}
+    )
+    assert _upload(client, "inventory_snapshots", snaps).status_code == 200
+
+    # The supplier slicer is now populated from the SOB master.
+    opts = client.get("/api/meta/slicers").json()["supplier"]
+    codes = {o["code"] for o in opts}
+    assert {"V1", "V2"} <= codes
+
+    # Filtering by a vendor scopes the dashboard to that vendor's materials.
+    d = client.get("/api/analytics/overview", params={"supplier": "V1"}).json()
+    assert d["kpis"]["materials"] == 1
+    assert d["kpis"]["inventory_value"] == 500.0
