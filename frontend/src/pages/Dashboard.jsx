@@ -26,8 +26,15 @@ function InventoryDrilldown({ f }) {
   // Reset the drill path whenever the global filters change.
   React.useEffect(() => { setStack([{ level: "yearly", label: "All" }]); }, [f.key]);
 
+  // Drilling into a period pins the request to its exact calendar bounds;
+  // at the top ("All") frame there's nothing to pin, so the global date-range
+  // filter (already in f.params) is left to take effect on its own — setting
+  // start/end here to undefined would instead erase it.
   const { loading, data, error } = useApi(
-    () => api.inventoryTimeseries({ ...f.params, grain: cur.level, start: cur.start, end: cur.end }),
+    () => api.inventoryTimeseries({
+      ...f.params, grain: cur.level,
+      ...(cur.start ? { start: cur.start, end: cur.end } : {}),
+    }),
     [f.key, cur.level, cur.start, cur.end],
   );
   const points = data?.points || [];
@@ -94,8 +101,14 @@ function BuyerRibbonDrilldown({ f, title, apiFn, emptyMessage, pendingHint }) {
 
   React.useEffect(() => { setStack([{ level: "yearly", label: "All" }]); }, [f.key]);
 
+  // Same rule as InventoryDrilldown: only override start/end once drilled
+  // into a specific period, so the global date-range filter still applies
+  // at the top ("All") frame instead of being wiped by an undefined pair.
   const { loading, data, error } = useApi(
-    () => apiFn({ ...f.params, grain: cur.level, start: cur.start, end: cur.end }),
+    () => apiFn({
+      ...f.params, grain: cur.level,
+      ...(cur.start ? { start: cur.start, end: cur.end } : {}),
+    }),
     [f.key, cur.level, cur.start, cur.end],
   );
   const points = data?.points || [];

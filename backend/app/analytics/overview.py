@@ -34,6 +34,7 @@ def _apply_supplier(db: Session, codes, supplier):
 
 
 def analyze(db: Session, *, as_of: date | None = None,
+            start: str | None = None, end: str | None = None,
             commodity: str | None = None, buyer: str | None = None,
             material: str | None = None, supplier: str | None = None,
             location: str | None = None, q: str | None = None) -> dict:
@@ -54,25 +55,35 @@ def analyze(db: Session, *, as_of: date | None = None,
     buyer_of = dict(zip(fmats.get("material_code", []), fmats.get("buyer", []))) if not fmats.empty else {}
 
     # --- Inventory value as on today: sum of value at the latest snapshot in
-    # the daily stock table, scoped to the filtered materials / location. ---
-    inv_total, inv_by_buyer = _inventory_today(db, allowed, buyer_of, location, has_filter=has_filter)
+    # the daily stock table, scoped to the filtered materials / location.
+    # A "today" figure is a point-in-time snapshot, so the global date-range
+    # filter narrows *which* date counts as "today": an explicit as_of wins,
+    # else the range's end date, else the true latest snapshot. If the range
+    # itself precedes any data (latest resolved date < start), there is
+    # nothing to show for that window. ---
+    cutoff = as_of.isoformat() if as_of else end
+    inv_total, inv_by_buyer, inv_as_of = _inventory_today(
+        db, allowed, buyer_of, location, has_filter=has_filter, cutoff=cutoff, start=start)
 
     # --- Incoming receipts value (this month) from goods movements: GR +
     # reversal of GR + return-to-vendor. Needs a movements transactions table,
     # which isn't loaded yet — 0 / empty until it is. ---
     incoming_total, incoming_by_buyer, incoming_pending = _incoming_receipts(db, allowed, buyer_of, as_of)
 
-    # Buyer-wise trends for the ribbon charts (last 12 months).
+    # Buyer-wise trends for the ribbon charts (last 12 months, bounded by the
+    # date-range filter when one is active).
     inventory_ribbon = _inventory_ribbon(db, allowed, buyer_of, location,
-                                         has_filter=has_filter)
+                                         has_filter=has_filter, start=start, end=cutoff)
 
     suppliers_count = db.execute(
         select(func.count(func.distinct(SOBMaster.vendor_code)))
     ).scalar() or 0
     materials_count = int(len(fmats))
 
+    resolved_as_of = _to_date(inv_as_of).isoformat() if inv_as_of is not None else (as_of or date.today()).isoformat()
+
     return {
-        "as_of": (as_of or date.today()).isoformat(),
+        "as_of": resolved_as_of,
         "filters": opts,
         "kpis": {
             "inventory_value": safe_round(inv_total),
@@ -234,13 +245,17 @@ def inventory_ribbon(db: Session, *, grain: str = "yearly",
     return {"grain": grain, "points": points, "series": series}
 
 
-def _inventory_ribbon(db, allowed: set, buyer_of: dict, location, has_filter: bool, n: int = 12):
-    """Buyer-wise inventory value at each month's last snapshot (last n months)."""
-    md = db.execute(
-        select(func.strftime("%Y-%m", InventorySnapshot.snapshot_date).label("m"),
-               func.max(InventorySnapshot.snapshot_date))
-        .group_by("m").order_by("m")
-    ).all()
+def _inventory_ribbon(db, allowed: set, buyer_of: dict, location, has_filter: bool, n: int = 12,
+                      start: str | None = None, end: str | None = None):
+    """Buyer-wise inventory value at each month's last snapshot (last n months,
+    or within [start, end] when the dashboard's date-range filter is active)."""
+    stmt = select(func.strftime("%Y-%m", InventorySnapshot.snapshot_date).label("m"),
+                  func.max(InventorySnapshot.snapshot_date))
+    if start:
+        stmt = stmt.where(InventorySnapshot.snapshot_date >= start)
+    if end:
+        stmt = stmt.where(InventorySnapshot.snapshot_date <= end)
+    md = db.execute(stmt.group_by("m").order_by("m")).all()
     md = md[-n:]
     months, per_month = [], []
     for m, dt in md:
@@ -263,11 +278,22 @@ def _inventory_ribbon(db, allowed: set, buyer_of: dict, location, has_filter: bo
     return {"months": months, "series": series}
 
 
-def _inventory_today(db, allowed: set, buyer_of: dict, location, has_filter: bool):
-    """Total + buyer-wise inventory value at the latest daily-stock date."""
-    latest = db.execute(select(func.max(InventorySnapshot.snapshot_date))).scalar()
+def _inventory_today(db, allowed: set, buyer_of: dict, location, has_filter: bool,
+                     cutoff: str | None = None, start: str | None = None):
+    """Total + buyer-wise inventory value at the latest daily-stock date at or
+    before `cutoff` (the dashboard's date-range end, or an explicit as_of) —
+    the true latest when no cutoff is given. Returns (total, by_buyer, date);
+    date is None (and total/by_buyer empty) when there's nothing at/before
+    cutoff, or the resolved date falls before `start` (no data in the window).
+    """
+    stmt = select(func.max(InventorySnapshot.snapshot_date))
+    if cutoff:
+        stmt = stmt.where(InventorySnapshot.snapshot_date <= cutoff)
+    latest = db.execute(stmt).scalar()
     if latest is None:
-        return 0.0, []
+        return 0.0, [], None
+    if start and _to_date(latest) < _to_date(start):
+        return 0.0, [], None
     stmt = select(
         InventorySnapshot.material_code, func.sum(InventorySnapshot.value)
     ).where(InventorySnapshot.snapshot_date == latest)
@@ -289,7 +315,7 @@ def _inventory_today(db, allowed: set, buyer_of: dict, location, has_filter: boo
         {"name": b, "value": safe_round(v)}
         for b, v in sorted(by_buyer.items(), key=lambda kv: kv[1], reverse=True)
     ]
-    return total, donut
+    return total, donut, latest
 
 
 # Goods-movement types that make up "incoming receipts" (from movement_master):

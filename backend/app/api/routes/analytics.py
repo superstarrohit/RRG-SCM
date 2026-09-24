@@ -47,9 +47,11 @@ def _slicers(
 
 
 @router.get("/overview")
-def get_overview(as_of: str | None = Query(None), f: dict = Depends(_slicers),
+def get_overview(as_of: str | None = Query(None),
+                 start: str | None = Query(None), end: str | None = Query(None),
+                 f: dict = Depends(_slicers),
                  db: Session = Depends(get_db)) -> dict:
-    return overview.analyze(db, as_of=_as_of(as_of), **f)
+    return overview.analyze(db, as_of=_as_of(as_of), start=start, end=end, **f)
 
 
 @router.get("/inventory-timeseries")

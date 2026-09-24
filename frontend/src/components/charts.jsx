@@ -24,6 +24,49 @@ function useMeasuredWidth(fallback) {
   return [ref, width];
 }
 
+// ---- Horizontal scroll slider ----
+// Charts whose content can outgrow their panel (many bars, a long date
+// range, more buyers than fit) already scroll horizontally via CSS overflow
+// on their wrapper, but a thin native scrollbar is easy to miss and awkward
+// to grab precisely. This tracks that wrapper's scroll position/size and
+// exposes an explicit slider so growth in the underlying data (more months,
+// more categories) stays navigable rather than just "scrollable if you find
+// the edge". `ref` must point at the element with `overflow-x: auto` whose
+// child is the oversized content (the chart's own wrapRef).
+function useHScroll(ref) {
+  const [state, setState] = React.useState({ show: false, value: 0, max: 0 });
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const update = () => {
+      const max = Math.max(0, el.scrollWidth - el.clientWidth);
+      setState({ show: max > 4, value: Math.min(el.scrollLeft, max), max });
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    let ro;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(update);
+      ro.observe(el);
+      if (el.firstElementChild) ro.observe(el.firstElementChild);
+    }
+    return () => { el.removeEventListener("scroll", update); ro?.disconnect(); };
+  }, [ref]);
+  return state;
+}
+
+function HScrollSlider({ scrollRef }) {
+  const { show, value, max } = useHScroll(scrollRef);
+  if (!show) return null;
+  return (
+    <input
+      type="range" className="chart-scrub" min={0} max={max} value={value}
+      onChange={(e) => { if (scrollRef.current) scrollRef.current.scrollLeft = Number(e.target.value); }}
+      aria-label="Scroll chart horizontally"
+    />
+  );
+}
+
 // CSS-variable references, not static hex — SVG presentation attributes
 // (fill/stroke/stop-color) resolve var() same as any CSS property, so chart
 // colors follow the active [data-accent] theme automatically.
@@ -186,6 +229,7 @@ export function RibbonChart({ series, months, valueFormat = (v) => v, height = 3
   };
 
   return (
+    <div>
     <div className="chart table-wrap" ref={wrapRef}>
       <svg viewBox={`0 0 ${W} ${height}`} style={{ minWidth: minContentW, width: "100%", height }}>
         <defs>
@@ -257,6 +301,8 @@ export function RibbonChart({ series, months, valueFormat = (v) => v, height = 3
                 fontSize="10.5" fill="var(--text-dim)">{fmtMonthLabel(m)}</text>
         ))}
       </svg>
+    </div>
+    <HScrollSlider scrollRef={wrapRef} />
 
       <div className="legend" style={{ marginTop: 10, flexWrap: "wrap", gap: 12 }}>
         {list.map((s, si) => (
@@ -333,6 +379,7 @@ export function VBars({ data, valueFormat = (v) => v, height = 240, color = PALE
   const ticks = 4;
   const gid = React.useId();
   return (
+    <div>
     <div className="chart table-wrap" ref={wrapRef}>
       <svg viewBox={`0 0 ${W} ${height}`} style={{ minWidth: minContentW, width: "100%", height }}>
         <defs>
@@ -377,6 +424,8 @@ export function VBars({ data, valueFormat = (v) => v, height = 240, color = PALE
         })}
       </svg>
     </div>
+    <HScrollSlider scrollRef={wrapRef} />
+    </div>
   );
 }
 
@@ -397,6 +446,7 @@ export function DrillBars({ data, valueFormat = (v) => v, height = 300, color = 
   const gid = React.useId();
   const many = data.length > 16;
   return (
+    <div>
     <div className="chart table-wrap" ref={wrapRef}>
       <svg viewBox={`0 0 ${W} ${height}`} style={{ minWidth: minContentW, width: "100%", height }}>
         <defs>
@@ -446,6 +496,8 @@ export function DrillBars({ data, valueFormat = (v) => v, height = 300, color = 
           );
         })}
       </svg>
+    </div>
+    <HScrollSlider scrollRef={wrapRef} />
     </div>
   );
 }

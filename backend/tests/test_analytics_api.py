@@ -209,3 +209,37 @@ def test_inventory_ribbon_drilldown(client):
                    params={"grain": "yearly", "buyer": "Alice"})
     names = {s["name"] for s in r.json()["series"]}
     assert names == {"Alice"}
+
+
+def test_overview_date_range_filter(client):
+    materials = pd.DataFrame(
+        {"Material": ["M1", "M2"], "Description": ["Part 1", "Part 2"],
+         "Buyer": ["Alice", "Bob"]}
+    )
+    assert _upload(client, "materials", materials).status_code == 200
+
+    snaps = pd.DataFrame(
+        {
+            "Material": ["M1", "M2", "M1", "M2"],
+            "Date": ["2025-06-30", "2025-06-30", "2025-12-31", "2025-12-31"],
+            "Inventory Value": [100, 200, 150, 250],
+        }
+    )
+    assert _upload(client, "inventory_snapshots", snaps).status_code == 200
+
+    # Unfiltered: "today" is the true latest snapshot (Dec).
+    d = client.get("/api/analytics/overview").json()
+    assert d["as_of"] == "2025-12-31"
+    assert d["kpis"]["inventory_value"] == 400.0
+
+    # A date-range filter's end date narrows "today" to the latest snapshot
+    # at or before it, and the resolved date is reflected back in as_of.
+    d = client.get("/api/analytics/overview", params={"end": "2025-09-30"}).json()
+    assert d["as_of"] == "2025-06-30"
+    assert d["kpis"]["inventory_value"] == 300.0
+
+    # A window entirely before any data has nothing to show.
+    d = client.get("/api/analytics/overview",
+                   params={"start": "2024-01-01", "end": "2024-06-30"}).json()
+    assert d["kpis"]["inventory_value"] == 0.0
+    assert d["inventory_by_buyer"] == []
