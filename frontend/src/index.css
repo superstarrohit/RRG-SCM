@@ -44,6 +44,20 @@
   --blue-ink: var(--blue);
   --red-ink: var(--red);
   --purple-ink: var(--purple);
+  /* Material Status badges (Excess/Safe/Alarm/Risk/Stockout): fixed
+     semantic colors, deliberately NOT tied to the accent palette above —
+     they need to stay Amber vs Yellow vs Red vs Green vs Black on every
+     one of the 30 accent themes, several of which set --amber to a shade
+     close enough to yellow that the two would otherwise be hard to tell
+     apart at a glance. */
+  --status-amber: #f59e0b;
+  --status-amber-ink: var(--status-amber);
+  --status-yellow: #facc15;
+  --status-yellow-ink: var(--status-yellow);
+  --status-green: #22c55e;
+  --status-green-ink: var(--status-green);
+  --status-red: #ef4444;
+  --status-red-ink: var(--status-red);
 
   /* ---- surfaces / text — dark is the default mode ---- */
   --bg: #08090f;
@@ -100,6 +114,10 @@
   --blue-ink: color-mix(in srgb, var(--blue) 65%, black 25%);
   --red-ink: color-mix(in srgb, var(--red) 70%, black 20%);
   --purple-ink: color-mix(in srgb, var(--purple) 68%, black 26%);
+  --status-amber-ink: color-mix(in srgb, var(--status-amber) 62%, black 30%);
+  --status-yellow-ink: color-mix(in srgb, var(--status-yellow) 55%, black 38%);
+  --status-green-ink: color-mix(in srgb, var(--status-green) 62%, black 28%);
+  --status-red-ink: color-mix(in srgb, var(--status-red) 62%, black 25%);
 }
 
 * { box-sizing: border-box; }
@@ -502,6 +520,16 @@ thead th.sortable:hover { color: var(--text); }
 .b-green { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--green-ink); }
 .b-grey { background: var(--surface-3); color: var(--muted); }
 .b-vip { background: var(--grad-amber); color: #1a1204; }
+/* Material Status badges — see the --status-* tokens above for why these
+   are fixed colors rather than the theme-reactive .b-amber/.b-green/.b-red. */
+.b-status-amber { background: color-mix(in srgb, var(--status-amber) 18%, transparent); color: var(--status-amber-ink); }
+.b-status-yellow { background: color-mix(in srgb, var(--status-yellow) 20%, transparent); color: var(--status-yellow-ink); }
+.b-status-green { background: color-mix(in srgb, var(--status-green) 16%, transparent); color: var(--status-green-ink); }
+.b-status-red { background: color-mix(in srgb, var(--status-red) 16%, transparent); color: var(--status-red-ink); }
+/* Solid chip with a light ring, not a theme tint — Stockout is the single
+   most severe status and needs to read as "black" (and stay visible
+   against an already-dark panel) on every theme, light or dark. */
+.b-status-black { background: #111827; color: #f8fafc; border: 1px solid rgba(255, 255, 255, 0.22); }
 
 /* ---- Filter chips (legacy generic) ---- */
 .chips { display: flex; gap: 8px; flex-wrap: wrap; }

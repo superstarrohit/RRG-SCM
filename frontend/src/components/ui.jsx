@@ -59,6 +59,9 @@ const BADGE = {
   due_this_week: "b-amber", due_this_month: "b-blue",
   future: "b-green", ok: "b-green", no_date: "b-grey", excess: "b-grey",
   A: "b-red", B: "b-amber", C: "b-green", vip: "b-vip",
+  // Material Planning's stock-health status, each pinned to its own fixed color.
+  Excess: "b-status-amber", Safe: "b-status-green", Alarm: "b-status-yellow",
+  Risk: "b-status-red", Stockout: "b-status-black",
 };
 // `value` picks the badge's color (a BADGE key); `label`, when given,
 // overrides the displayed text — for callers that map an arbitrary value

@@ -6,9 +6,6 @@ import {
 } from "../components/ui.jsx";
 import { useFilters } from "../components/filters.jsx";
 
-// Maps our five stock-health statuses onto the shared Badge color palette
-// (see StockMonitoring.jsx's STATUS_BADGE for the same convention).
-const STATUS_BADGE = { Stockout: "short", Risk: "short", Alarm: "due_this_month", Safe: "ok", Excess: "excess" };
 const STATUS_OPTIONS = ["Stockout", "Risk", "Alarm", "Safe", "Excess"];
 
 const planCols = [
@@ -21,7 +18,7 @@ const planCols = [
   { key: "reach_days", label: "Reach (Days)", num: true, render: (v) => v == null ? "—" : fmtNum(v, 1) },
   {
     key: "status", label: "Material Status", filterType: "select", options: STATUS_OPTIONS,
-    render: (v) => <Badge value={STATUS_BADGE[v]} label={v} />,
+    render: (v) => <Badge value={v} />,
   },
   { key: "open_po", label: "Open PO", num: true, render: (v) => fmtNum(v) },
   { key: "m1_shortage", label: "Shortage (M1)", num: true, render: (v) => fmtNum(v) },
