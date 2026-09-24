@@ -8,6 +8,13 @@ import { useFilters } from "../components/filters.jsx";
 
 const STATUS_OPTIONS = ["Stockout", "Risk", "Alarm", "Safe", "Excess"];
 
+// A negative forecast means that month is projected to run out of stock —
+// flag it in red so it reads at a glance, same convention as Costing's
+// cost-variance column.
+const forecastCell = (v) => (
+  <span style={{ color: v < 0 ? "var(--red)" : "inherit" }}>{fmtNum(v)}</span>
+);
+
 const planCols = [
   { key: "material_code", label: "Material", render: (v) => <span className="mono strong">{v}</span> },
   { key: "description", label: "Material Description" },
@@ -21,13 +28,13 @@ const planCols = [
     render: (v) => <Badge value={v} />,
   },
   { key: "open_po", label: "Open PO", num: true, render: (v) => fmtNum(v) },
-  { key: "m1_shortage", label: "Shortage (M1)", num: true, render: (v) => fmtNum(v) },
+  { key: "m1_forecast", label: "Forecast Stock (M1)", num: true, render: forecastCell },
   { key: "m2_demand", label: "M2 Requirement", num: true, render: (v) => fmtNum(v) },
-  { key: "m2_shortage", label: "M2 Shortage", num: true, render: (v) => fmtNum(v) },
+  { key: "m2_forecast", label: "M2 Forecast Stock", num: true, render: forecastCell },
   { key: "m3_demand", label: "M3 Requirement", num: true, render: (v) => fmtNum(v) },
-  { key: "m3_shortage", label: "M3 Shortage", num: true, render: (v) => fmtNum(v) },
+  { key: "m3_forecast", label: "M3 Forecast Stock", num: true, render: forecastCell },
   { key: "m4_demand", label: "M4 Requirement", num: true, render: (v) => fmtNum(v) },
-  { key: "m4_shortage", label: "M4 Shortage", num: true, render: (v) => fmtNum(v) },
+  { key: "m4_forecast", label: "M4 Forecast Stock", num: true, render: forecastCell },
 ];
 
 export default function Planning() {
@@ -39,7 +46,7 @@ export default function Planning() {
   const head = (
     <PageHeader
       title="Material Planning (MRP)"
-      subtitle="Current stock vs safety / refill / max levels, this month's demand and shortage, and the M2–M4 requirement outlook."
+      subtitle="Current stock vs safety / refill / max levels, this month's demand, and the M2–M4 requirement and forecast-stock outlook."
       asOf={data.as_of}
     />
   );

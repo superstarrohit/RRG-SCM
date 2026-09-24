@@ -326,18 +326,23 @@ def test_material_planning_report(client):
     assert safe["current_stock"] == 300.0
     assert safe["warehouse_stock"] == 120.0  # sourced independently from the warehouse-stock dump
     assert safe["reach_days"] == 30.0  # 300 / (200 demand / 20 working days)
-    # Rolling M1-M4 net requirement, each month required to still leave
-    # safety stock on hand at its end.
-    assert safe["m1_demand"] == 200.0 and safe["m1_shortage"] == 0.0
-    assert safe["m2_demand"] == 150.0 and safe["m2_shortage"] == 100.0
-    assert safe["m3_demand"] == 100.0 and safe["m3_shortage"] == 100.0
-    assert safe["m4_demand"] == 50.0 and safe["m4_shortage"] == 50.0
+    # Rolling M1-M4 forecast: each month's stock = previous balance - that
+    # month's demand (a projected shortfall is assumed topped up to safety
+    # stock before the next month starts, so it doesn't cascade).
+    # M1: 300 - 200 = 100 (no shortfall, so M2 starts from 100 too)
+    # M2: 100 - 150 = -50 (short 100 vs safety 50 -> M3 starts from 50)
+    # M3: 50 - 100 = -50 (short 100 again -> M4 starts from 50)
+    # M4: 50 - 50 = 0
+    assert safe["m1_demand"] == 200.0 and safe["m1_forecast"] == 100.0
+    assert safe["m2_demand"] == 150.0 and safe["m2_forecast"] == -50.0
+    assert safe["m3_demand"] == 100.0 and safe["m3_forecast"] == -50.0
+    assert safe["m4_demand"] == 50.0 and safe["m4_forecast"] == 0.0
 
-    # Open POs offset the shortfall: without the 30 open, M1 shortage would
-    # be 70 (safety 20 - (50 - 100)); with it, it's 40.
+    # Open POs feed straight into the forecast: without the 30 open, M1
+    # would forecast -50 (50 - 100); with it, it's -20.
     openpo = rows["M-OPENPO"]
     assert openpo["open_po"] == 30.0
-    assert openpo["m1_shortage"] == 40.0
+    assert openpo["m1_forecast"] == -20.0
 
     # Buyer slicer scopes the report like every other page.
     r = client.get("/api/analytics/planning", params={"buyer": "Alice"})
