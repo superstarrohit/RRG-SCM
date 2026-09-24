@@ -93,7 +93,6 @@ export default function Dashboard() {
     <div>
       <PageHeader
         title="Overall SCM Dashboard"
-        subtitle="Inventory value as on today and this month's incoming receipts, with supplier and material counts."
         asOf={data.as_of}
       />
 
