@@ -190,22 +190,39 @@ function DescriptionSearch({ f }) {
   );
 }
 
-// The global slicer panel — a persistent right-hand rail on desktop, a
-// slide-over drawer (behind a floating toggle) on narrow screens.
+// The global slicer panel — a persistent right-hand rail on desktop
+// (collapsible to a slim icon rail), a slide-over drawer (behind a floating
+// toggle) on narrow screens.
 export function FiltersPanel() {
   const f = useFilters();
   const [open, setOpen] = React.useState(false);
+  const [collapsed, setCollapsed] = React.useState(() => load("scm.filtersCollapsed") === "1");
+  React.useEffect(() => save("scm.filtersCollapsed", collapsed ? "1" : ""), [collapsed]);
   if (!f) return null;
 
   const chipKeys = ["commodity", "buyer", "material", "supplier", "location", "q", "start", "end"];
   const activeChips = chipKeys.filter((k) => f[k]);
 
-  const panel = (
+  // Collapsed is a desktop-only affordance (mobile already hides the panel
+  // behind the drawer/FAB pair below) — render the slim rail in its place,
+  // but keep the FAB/backdrop so mobile filter access is unaffected.
+  const panel = collapsed ? (
+    <aside className="filters-panel collapsed" aria-label="Filters (collapsed)">
+      <button className="fp-expand" onClick={() => setCollapsed(false)} title="Show filters" aria-label="Show filters">
+        <Icon name="filter" size={16} />
+        {f.count > 0 && <span className="fp-count">{f.count}</span>}
+        <Icon name="chevronDown" size={13} className="fp-expand-chev" />
+      </button>
+    </aside>
+  ) : (
     <aside className={`filters-panel${open ? " open" : ""}`} aria-label="Filters">
       <div className="fp-head">
         <span className="fp-title"><Icon name="filter" size={15} /> Filters
           {f.count > 0 && <span className="fp-count">{f.count}</span>}
         </span>
+        <button className="fp-collapse" onClick={() => setCollapsed(true)} title="Collapse filters" aria-label="Collapse filters">
+          <Icon name="chevronDown" size={15} />
+        </button>
         <button className="fp-close" onClick={() => setOpen(false)} aria-label="Close filters">
           <Icon name="x" size={15} />
         </button>

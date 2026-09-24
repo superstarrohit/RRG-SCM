@@ -265,14 +265,34 @@ a { color: inherit; text-decoration: none; }
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   border-left: 1px solid var(--border);
 }
-.fp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-.fp-title { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 800; color: var(--text); }
+.fp-head { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-bottom: 4px; }
+.fp-title { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 800; color: var(--text); margin-right: auto; }
 .fp-count {
   display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px;
   border-radius: var(--radius-full); background: var(--grad-purple); color: #fff;
   font-size: 10.5px; font-weight: 800;
 }
-.fp-close { display: none; background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px; }
+.fp-close { display: none; background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px; flex-shrink: 0; }
+.fp-collapse {
+  background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px; flex-shrink: 0;
+  display: inline-flex; transform: rotate(-90deg); transition: color var(--dur-fast) var(--ease);
+}
+.fp-collapse:hover { color: var(--text); }
+
+/* Collapsed state: a slim icon-only rail that expands back on click.
+   Desktop-only — below 980px the mobile drawer/FAB pair takes over instead
+   (see the max-width media query), so collapsed width is scoped to not
+   fight that fixed-position layout. */
+.fp-expand {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: none; border: none; color: var(--text-dim); cursor: pointer; padding: 8px 4px; border-radius: 10px;
+  transition: color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.fp-expand:hover { color: var(--text); background: var(--surface-2); }
+.fp-expand-chev { transform: rotate(-90deg); opacity: 0.6; }
+@media (min-width: 981px) {
+  .filters-panel.collapsed { width: 52px; padding: 18px 0; display: flex; justify-content: center; }
+}
 
 .fp-body { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
 .fp-field { display: flex; flex-direction: column; gap: 6px; position: relative; }
