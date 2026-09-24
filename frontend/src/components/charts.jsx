@@ -40,7 +40,10 @@ function useHScroll(ref) {
     if (!el) return undefined;
     const update = () => {
       const max = Math.max(0, el.scrollWidth - el.clientWidth);
-      setState({ show: max > 4, value: Math.min(el.scrollLeft, max), max });
+      // >20px, not >0 — .table-wrap's own -4px margin/4px padding trick
+      // alone creates a few px of "overflow" that isn't real scrollable
+      // content, so a small threshold avoids showing the slider for that.
+      setState({ show: max > 20, value: Math.min(el.scrollLeft, max), max });
     };
     update();
     el.addEventListener("scroll", update, { passive: true });
