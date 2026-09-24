@@ -507,9 +507,24 @@ thead th.sortable:hover { color: var(--text); }
    otherwise the page itself grows to the table's full height and both the
    scroll slider and the sort/filter header would be miles above the fold
    once you've scrolled down to review rows. */
-.table-wrap-scroll { max-height: 640px; overflow-y: auto; }
-.table-wrap-scroll thead { position: sticky; top: 0; z-index: 1; background: var(--surface); }
-.table-wrap-scroll thead .filter-row th { background: var(--surface-2); }
+.table-wrap-scroll { max-height: 640px; overflow-y: auto; contain: paint; }
+/* Separate (not collapsed) borders — sticky positioning on a <thead>/<tr>
+   inside a border-collapse:collapse table is a known cross-browser
+   rendering bug: scrolled-past rows can bleed through the sticky header
+   during a scroll gesture instead of staying hidden behind it. Sticky on
+   the individual <th> cells (below), rather than the <thead> or <tr>, is
+   the reliable fix. */
+.table-wrap-scroll table { border-collapse: separate; border-spacing: 0; }
+/* will-change promotes each sticky cell to its own GPU compositing layer —
+   without it, a fast scroll can outrun the browser's repaint of the sticky
+   cells' background, letting the row scrolling past show through for a
+   frame or two before the header "catches up". */
+.table-wrap-scroll thead th {
+  position: sticky; top: 0; z-index: 2; background: var(--surface); will-change: transform;
+}
+.table-wrap-scroll thead .filter-row th {
+  top: var(--filter-row-top, 34px); background: var(--surface-2); z-index: 2;
+}
 
 /* ---- Badges / pills ---- */
 .badge { display: inline-block; padding: 3px 11px; border-radius: var(--radius-full); font-size: 11px; font-weight: 700; letter-spacing: 0.2px; }

@@ -137,6 +137,17 @@ export function SortableTable({ columns, rows }) {
   const [sort, setSort] = React.useState({ key: null, dir: 1 });
   const [filters, setFilters] = React.useState({});
   const wrapRef = React.useRef(null);
+  const headRowRef = React.useRef(null);
+  // The filter row sticks right below the sort-header row, so it needs that
+  // row's real rendered height as its own `top` offset — measured rather
+  // than hardcoded, since row height depends on font size/theme/zoom.
+  const [headRowH, setHeadRowH] = React.useState(0);
+  React.useEffect(() => {
+    const measure = () => setHeadRowH(headRowRef.current?.offsetHeight || 0);
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, []);
 
   // Ascending <-> descending only — a 3rd state that cleared the sort
   // entirely made repeated clicks snap the table back to its original,
@@ -206,7 +217,7 @@ export function SortableTable({ columns, rows }) {
       <div className="table-wrap table-wrap-scroll" ref={wrapRef}>
         <table>
           <thead>
-            <tr>
+            <tr ref={headRowRef}>
               {columns.map((c) => (
                 <th key={c.key} className={`sortable ${c.num ? "num" : ""}`} onClick={() => toggleSort(c.key)}>
                   {c.label}
@@ -216,7 +227,7 @@ export function SortableTable({ columns, rows }) {
                 </th>
               ))}
             </tr>
-            <tr className="filter-row">
+            <tr className="filter-row" style={{ "--filter-row-top": `${headRowH}px` }}>
               {columns.map((c) => (
                 <th key={c.key} className={c.num ? "num" : ""} onClick={(e) => e.stopPropagation()}>
                   {c.filterType === "select" ? (

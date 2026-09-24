@@ -1,9 +1,10 @@
-"""Material Planning — per-material stock-health & stock-forecast report.
+"""Material Planning — per-material stock-health & net-requirement report.
 
 Compares each material's latest on-hand stock against its safety / refill /
-max levels and this month's demand (M1), then rolls the remaining demand
-months (M2-M4) forward against today's stock + open POs to forecast each
-month's projected closing stock.
+max levels and this month's demand (M1), then rolls a standard MRP
+net-requirement / balance calculation forward through M2-M4: each month's
+Forecast (what to procure to still hold safety stock) and Bal (the
+resulting projected closing stock, carried into the next month).
 """
 from __future__ import annotations
 
@@ -105,21 +106,21 @@ def analyze(db: Session, *, as_of: date | None = None,
     daily_demand = base["demand"] / WORKING_DAYS_PER_MONTH
     base["reach_days"] = np.where(daily_demand > 0, base["current_stock"] / daily_demand, np.nan)
 
-    # Roll M1..M4 forward: each month's forecast stock is what's left after
-    # that month's demand, given today's stock + open POs and nothing else
-    # procured — a negative number means a stockout is projected that month.
-    # For chaining to the *next* month, a projected shortfall is assumed
-    # covered (procured up to safety stock) before that month starts —
-    # otherwise a single bad month would cascade into every later one, which
-    # would overstate the forecast for months further out.
-    balance = base["current_stock"] + base["open_po"]
+    # Roll M1..M4 forward as a standard net-requirement / balance rollup:
+    #   Forecast[n] = max(0, Demand[n] + Safety - Bal[n-1])   (Bal[0] = current stock)
+    #   Bal[n]      = Forecast[n] + Bal[n-1] - Demand[n]
+    # Forecast is what to procure that month to still hold safety stock by
+    # its end (floored at 0 — you can't procure a negative amount); Bal is
+    # the resulting projected closing stock, which feeds the next month in
+    # place of "current stock".
+    balance = base["current_stock"]
     monthly = {}
     for label, col in MONTHS:
         demand = base[col]
-        end_balance = balance - demand
-        shortage = (base["safety_stock"] - end_balance).clip(lower=0)
-        monthly[label] = (demand, end_balance)
-        balance = end_balance + shortage
+        forecast = (demand + base["safety_stock"] - balance).clip(lower=0)
+        bal = forecast + balance - demand
+        monthly[label] = (demand, forecast, bal)
+        balance = bal
 
     status_rank = {s: i for i, s in enumerate(STATUS_ORDER)}
     base["_rank"] = base["status"].map(status_rank)
@@ -138,9 +139,10 @@ def analyze(db: Session, *, as_of: date | None = None,
             "open_po": safe_round(r["open_po"]),
         }
         for label, _ in MONTHS:
-            demand, forecast_stock = monthly[label]
+            demand, forecast, bal = monthly[label]
             row[f"{label.lower()}_demand"] = safe_round(demand[idx])
-            row[f"{label.lower()}_forecast"] = safe_round(forecast_stock[idx])
+            row[f"{label.lower()}_forecast"] = safe_round(forecast[idx])
+            row[f"{label.lower()}_bal"] = safe_round(bal[idx])
         rows.append(row)
 
     counts = base["status"].value_counts().to_dict()

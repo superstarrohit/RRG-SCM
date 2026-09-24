@@ -8,11 +8,11 @@ import { useFilters } from "../components/filters.jsx";
 
 const STATUS_OPTIONS = ["Stockout", "Risk", "Alarm", "Safe", "Excess"];
 
-// A negative forecast means that month is projected to run out of stock —
-// flag it in red so it reads at a glance, same convention as Costing's
-// cost-variance column.
+// Forecast is the net requirement to procure that month to still hold
+// safety stock — a positive value means action is needed, so flag it in
+// red rather than the usual neutral number color.
 const forecastCell = (v) => (
-  <span style={{ color: v < 0 ? "var(--red)" : "inherit" }}>{fmtNum(v)}</span>
+  <span style={{ color: v > 0 ? "var(--red)" : "inherit" }}>{fmtNum(v)}</span>
 );
 
 const planCols = [
@@ -28,13 +28,17 @@ const planCols = [
     render: (v) => <Badge value={v} />,
   },
   { key: "open_po", label: "Open PO", num: true, render: (v) => fmtNum(v) },
-  { key: "m1_forecast", label: "Forecast Stock (M1)", num: true, render: forecastCell },
-  { key: "m2_demand", label: "M2 Requirement", num: true, render: (v) => fmtNum(v) },
-  { key: "m2_forecast", label: "M2 Forecast Stock", num: true, render: forecastCell },
-  { key: "m3_demand", label: "M3 Requirement", num: true, render: (v) => fmtNum(v) },
-  { key: "m3_forecast", label: "M3 Forecast Stock", num: true, render: forecastCell },
-  { key: "m4_demand", label: "M4 Requirement", num: true, render: (v) => fmtNum(v) },
-  { key: "m4_forecast", label: "M4 Forecast Stock", num: true, render: forecastCell },
+  { key: "m1_forecast", label: "M1 Forecast", num: true, render: forecastCell },
+  { key: "m1_bal", label: "M1 Bal", num: true, render: (v) => fmtNum(v) },
+  { key: "m2_demand", label: "M2 Demand", num: true, render: (v) => fmtNum(v) },
+  { key: "m2_forecast", label: "M2 Forecast", num: true, render: forecastCell },
+  { key: "m2_bal", label: "M2 Bal", num: true, render: (v) => fmtNum(v) },
+  { key: "m3_demand", label: "M3 Demand", num: true, render: (v) => fmtNum(v) },
+  { key: "m3_forecast", label: "M3 Forecast", num: true, render: forecastCell },
+  { key: "m3_bal", label: "M3 Bal", num: true, render: (v) => fmtNum(v) },
+  { key: "m4_demand", label: "M4 Demand", num: true, render: (v) => fmtNum(v) },
+  { key: "m4_forecast", label: "M4 Forecast", num: true, render: forecastCell },
+  { key: "m4_bal", label: "M4 Bal", num: true, render: (v) => fmtNum(v) },
 ];
 
 export default function Planning() {
@@ -46,7 +50,7 @@ export default function Planning() {
   const head = (
     <PageHeader
       title="Material Planning (MRP)"
-      subtitle="Current stock vs safety / refill / max levels, this month's demand, and the M2–M4 requirement and forecast-stock outlook."
+      subtitle="Current stock vs safety / refill / max levels, and a rolling M1–M4 net-requirement (Forecast) and projected-balance (Bal) outlook."
       asOf={data.as_of}
     />
   );
