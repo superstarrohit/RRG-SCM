@@ -122,7 +122,11 @@ export function fmtMonthLabel(m) {
 // on top; the ribbons show how each series' share flows month to month.
 //   series: [{ name, values: number[] }]   (one value per month/period)
 //   months: string[]                        (period labels, x-axis)
-export function RibbonChart({ series, months, valueFormat = (v) => v, height = 300, colors }) {
+// `onPeriod(index)` + `clickable` turn each column into a drill target (Power
+// BI-style click-to-drill); `showValues` labels each segment tall enough to
+// hold its value, with an outlined fill so it reads on every segment color.
+export function RibbonChart({ series, months, valueFormat = (v) => v, height = 300, colors,
+                              onPeriod, clickable = false, showValues = true }) {
   const [wrapRef, measuredW] = useMeasuredWidth(760);
   const list = (series || []).filter((s) => (s.values || []).some((v) => (v || 0) > 0));
   const n = (months || []).length;
@@ -217,18 +221,35 @@ export function RibbonChart({ series, months, valueFormat = (v) => v, height = 3
           })
         )}
 
-        {/* stacked column segments */}
+        {/* stacked column segments, each tagged with its value when tall
+            enough to hold the label (outlined text reads on any fill color) */}
         {months.map((_, i) =>
           list.map((ser, si) => {
             const s = segs[i][si];
             if (!s) return null;
+            const segH = s.y1 - s.y0;
             return (
-              <rect key={`${i}-${si}`} x={cx(i) - barW / 2} y={s.y0}
-                    width={barW} height={Math.max(s.y1 - s.y0, 1)} rx="4"
-                    fill={`url(#rb-${gid}-${si})`} />
+              <g key={`${i}-${si}`}>
+                <rect x={cx(i) - barW / 2} y={s.y0}
+                      width={barW} height={Math.max(segH, 1)} rx="4"
+                      fill={`url(#rb-${gid}-${si})`} />
+                {showValues && segH >= 18 && (
+                  <text x={cx(i)} y={(s.y0 + s.y1) / 2 + 4} textAnchor="middle" fontSize="10.5"
+                        fontWeight="700" fill="#fff"
+                        style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,0.55)", strokeWidth: 3, strokeLinejoin: "round" }}>
+                    {valueFormat(ser.values[i])}
+                  </text>
+                )}
+              </g>
             );
           })
         )}
+
+        {/* full-height click targets, one per period column, for drilldown */}
+        {clickable && onPeriod && months.map((_, i) => (
+          <rect key={`hit-${i}`} x={cx(i) - colGap / 2} y={padT} width={colGap} height={chartH}
+                fill="transparent" style={{ cursor: "pointer" }} onClick={() => onPeriod(i)} />
+        ))}
 
         {/* period (x-axis) labels — YYYY-MM shown as "Mon YYYY" */}
         {months.map((m, i) => (
@@ -299,13 +320,13 @@ export function Donut({ segments, size = 168, thickness = 26, centerLabel, cente
 }
 
 // ---- Vertical bar chart with glow ----
-export function VBars({ data, valueFormat = (v) => v, height = 240, color = PALETTE.purple }) {
+export function VBars({ data, valueFormat = (v) => v, height = 240, color = PALETTE.purple, showValues = false }) {
   const [wrapRef, measuredW] = useMeasuredWidth(560);
   if (!data.length) return <div className="empty">No data.</div>;
   const max = Math.max(1, ...data.map((d) => d.value || 0));
   const minContentW = Math.max(360, data.length * 92);
   const W = Math.max(measuredW, minContentW);
-  const padL = 44, padB = 34, padT = 12;
+  const padL = 44, padB = 34, padT = showValues ? 28 : 12;
   const chartH = height - padB - padT;
   const bw = Math.min(46, (W - padL) / data.length - 22);
   const gap = (W - padL) / data.length;
@@ -344,6 +365,10 @@ export function VBars({ data, valueFormat = (v) => v, height = 240, color = PALE
             <g key={i}>
               <rect x={x} y={y} width={bw} height={Math.max(h, 1)} rx="7"
                     fill={`url(#vb-${gid})`} filter={`url(#glow-${gid})`} />
+              {showValues && (
+                <text x={x + bw / 2} y={y - 8} textAnchor="middle" fontSize="11"
+                      fontWeight="700" fill="var(--text)">{valueFormat(d.value)}</text>
+              )}
               <text x={x + bw / 2} y={height - padB + 16} textAnchor="middle" fontSize="11" fill="var(--text-dim)">
                 {d.label}
               </text>

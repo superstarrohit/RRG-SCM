@@ -171,6 +171,69 @@ def inventory_timeseries(db: Session, *, grain: str = "monthly",
     return {"grain": grain, "points": points}
 
 
+def inventory_ribbon(db: Session, *, grain: str = "yearly",
+                     start: str | None = None, end: str | None = None,
+                     commodity: str | None = None, buyer: str | None = None,
+                     material: str | None = None, supplier: str | None = None,
+                     location: str | None = None, q: str | None = None,
+                     top_n: int = 8) -> dict:
+    """Buyer-wise inventory value over time, drillable Year → Quarter → Month
+    (the ribbon-chart counterpart of ``inventory_timeseries``).
+
+    Each period is represented by its last daily-stock snapshot (period-end
+    inventory). `start`/`end` bound the window — used to drill a parent period
+    (e.g. a year) into its child periods (its quarters).
+    """
+    grain = grain if grain in {"yearly", "quarterly", "monthly"} else "yearly"
+    materials = materials_df(db)
+    codes = allowed_codes(materials, commodity, buyer, material)
+    codes = _apply_supplier(db, codes, supplier)
+    fmats = apply_search(
+        materials if codes is None else materials[materials["material_code"].isin(codes)],
+        q, ["material_code", "description"],
+    )
+    has_filter = codes is not None or bool(q)
+    allowed = set(fmats["material_code"]) if not fmats.empty else set()
+    buyer_of = dict(zip(fmats.get("material_code", []), fmats.get("buyer", []))) if not fmats.empty else {}
+
+    stmt = select(InventorySnapshot.snapshot_date).distinct()
+    if start:
+        stmt = stmt.where(InventorySnapshot.snapshot_date >= start)
+    if end:
+        stmt = stmt.where(InventorySnapshot.snapshot_date <= end)
+    dates = sorted(_to_date(r[0]) for r in db.execute(stmt).all())
+    if not dates:
+        return {"grain": grain, "points": [], "series": []}
+
+    # One representative (last) snapshot date per period.
+    reps: dict[str, dict] = {}
+    for d in dates:                             # ascending, so the last one wins
+        key, label, ps, pe = _bucket(d, grain)
+        reps[key] = {"key": key, "label": label, "start": ps.isoformat(), "end": pe.isoformat(), "date": d}
+    periods = [reps[k] for k in sorted(reps)]
+
+    per_period_by_buyer = []
+    for p in periods:
+        stmt = select(InventorySnapshot.material_code, func.sum(InventorySnapshot.value)).where(
+            InventorySnapshot.snapshot_date == p["date"])
+        if location:
+            stmt = stmt.where(InventorySnapshot.location == location)
+        stmt = stmt.group_by(InventorySnapshot.material_code)
+        bb: dict[str, float] = {}
+        for code, val in db.execute(stmt).all():
+            if has_filter and code not in allowed:
+                continue
+            b = buyer_of.get(code) or "Unassigned"
+            bb[b] = bb.get(b, 0.0) + float(val or 0.0)
+        per_period_by_buyer.append(bb)
+
+    buyers = sorted({b for bb in per_period_by_buyer for b in bb},
+                    key=lambda b: -sum(bb.get(b, 0.0) for bb in per_period_by_buyer))[:top_n]
+    series = [{"name": b, "values": [safe_round(bb.get(b, 0.0)) for bb in per_period_by_buyer]} for b in buyers]
+    points = [{"key": p["key"], "label": p["label"], "start": p["start"], "end": p["end"]} for p in periods]
+    return {"grain": grain, "points": points, "series": series}
+
+
 def _inventory_ribbon(db, allowed: set, buyer_of: dict, location, has_filter: bool, n: int = 12):
     """Buyer-wise inventory value at each month's last snapshot (last n months)."""
     md = db.execute(

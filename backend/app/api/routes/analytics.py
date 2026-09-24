@@ -63,6 +63,18 @@ def get_inventory_timeseries(
     return overview.inventory_timeseries(db, grain=grain, start=start, end=end, **f)
 
 
+@router.get("/inventory-ribbon")
+def get_inventory_ribbon(
+    grain: str = Query("yearly", pattern="^(yearly|quarterly|monthly)$"),
+    start: str | None = Query(None),
+    end: str | None = Query(None),
+    top_n: int = Query(8, ge=1, le=20),
+    f: dict = Depends(_slicers),
+    db: Session = Depends(get_db),
+) -> dict:
+    return overview.inventory_ribbon(db, grain=grain, start=start, end=end, top_n=top_n, **f)
+
+
 @router.get("/incoming")
 def get_incoming(
     as_of: str | None = Query(None),

@@ -80,6 +80,67 @@ function InventoryDrilldown({ f }) {
   );
 }
 
+// Buyer ribbon hierarchy: Year → Quarter → Month (a monthly ribbon across a
+// full year's worth of quarters would be unreadable, so it stops at Month).
+const RIBBON_HIER = ["yearly", "quarterly", "monthly"];
+const RIBBON_LEVEL_NAME = { yearly: "Year", quarterly: "Quarter", monthly: "Month" };
+
+// Buyer-wise value ribbon with the same click-to-drill hierarchy as the
+// trend chart above. `apiFn` fetches {points, series} for the current level.
+function BuyerRibbonDrilldown({ f, title, apiFn, emptyMessage, pendingHint }) {
+  const [stack, setStack] = React.useState([{ level: "yearly", label: "All" }]);
+  const cur = stack[stack.length - 1];
+  const nextLevel = RIBBON_HIER[RIBBON_HIER.indexOf(cur.level) + 1] || null;
+
+  React.useEffect(() => { setStack([{ level: "yearly", label: "All" }]); }, [f.key]);
+
+  const { loading, data, error } = useApi(
+    () => apiFn({ ...f.params, grain: cur.level, start: cur.start, end: cur.end }),
+    [f.key, cur.level, cur.start, cur.end],
+  );
+  const points = data?.points || [];
+  const series = data?.series || [];
+  const months = points.map((p) => p.label);
+
+  const drillInto = (i) => {
+    const p = points[i];
+    if (!p || !nextLevel) return;
+    setStack((s) => [...s, { level: nextLevel, start: p.start, end: p.end, label: p.label }]);
+  };
+  const jumpTo = (i) => setStack((s) => s.slice(0, i + 1));
+  const drillUp = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
+
+  return (
+    <Panel title={title} hint={pendingHint || ""}>
+      <div className="drill-bar">
+        <button className="drill-up" onClick={drillUp} disabled={stack.length === 1}
+                title="Drill up" aria-label="Drill up">▲</button>
+        <nav className="crumbs" aria-label="Drilldown path">
+          {stack.map((fr, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <span className="crumb-sep">›</span>}
+              <button className={`crumb${i === stack.length - 1 ? " active" : ""}`}
+                      onClick={() => jumpTo(i)}>{fr.label}</button>
+            </React.Fragment>
+          ))}
+        </nav>
+        <span className="drill-level">
+          by {RIBBON_LEVEL_NAME[cur.level]}
+          {nextLevel && <span className="drill-hint"> · click a column to drill into {RIBBON_LEVEL_NAME[nextLevel].toLowerCase()}s</span>}
+        </span>
+      </div>
+      {error
+        ? <ErrorState error={error} />
+        : loading
+          ? <div className="empty">Loading…</div>
+          : !series.length
+            ? <div className="empty">{emptyMessage}</div>
+            : <RibbonChart series={series} months={months} valueFormat={axisM}
+                           onPeriod={drillInto} clickable={!!nextLevel} />}
+    </Panel>
+  );
+}
+
 export default function Dashboard() {
   const f = useFilters();
   const { loading, data, error } = useApi(() => api.overview(f.params), [f.key]);
@@ -87,8 +148,6 @@ export default function Dashboard() {
   if (error) return <ErrorState error={error} />;
 
   const k = data.kpis;
-  const invRibbon = data.inventory_ribbon || { months: [], series: [] };
-  const incRibbon = data.incoming_ribbon || { months: [], series: [] };
   const invByBuyer = (data.inventory_by_buyer || []).map((r) => ({ label: r.name || "Unassigned", value: r.value }));
 
   return (
@@ -117,21 +176,18 @@ export default function Dashboard() {
       {/* Latest (as-on-today) inventory value per buyer — buyers on X. */}
       <Panel title="Latest Inventory Value by Buyer">
         {invByBuyer.length
-          ? <VBars data={invByBuyer} valueFormat={axisM} color={PALETTE.green} />
+          ? <VBars data={invByBuyer} valueFormat={axisM} color={PALETTE.green} showValues />
           : <div className="empty">No inventory to chart yet.</div>}
       </Panel>
 
       {/* Ribbon charts need the full page width for their time axis, so each
-          sits in its own full-width row rather than a two-up grid. */}
-      <Panel title="Inventory Value by Buyer">
-        {invRibbon.series && invRibbon.series.length
-          ? <RibbonChart series={invRibbon.series} months={invRibbon.months} valueFormat={axisM} />
-          : <div className="empty">No inventory history to chart yet.</div>}
-      </Panel>
+          sits in its own full-width row rather than a two-up grid. Buyer
+          ribbon has the same Power BI-style click-to-drill as the trend. */}
+      <BuyerRibbonDrilldown f={f} title="Inventory Value by Buyer"
+                            apiFn={api.inventoryRibbon}
+                            emptyMessage="No inventory history to chart yet." />
       <Panel title="Incoming Value by Buyer" hint={data.incoming_pending ? "awaiting movements data" : ""}>
-        {incRibbon.series && incRibbon.series.length
-          ? <RibbonChart series={incRibbon.series} months={incRibbon.months} valueFormat={axisM} />
-          : <div className="empty">Upload a movements file to see incoming value by buyer.</div>}
+        <div className="empty">Upload a movements file to see incoming value by buyer.</div>
       </Panel>
     </div>
   );

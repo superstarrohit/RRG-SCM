@@ -160,3 +160,52 @@ def test_supplier_slicer_and_filter(client):
     d = client.get("/api/analytics/overview", params={"supplier": "V1"}).json()
     assert d["kpis"]["materials"] == 1
     assert d["kpis"]["inventory_value"] == 500.0
+
+
+def test_inventory_ribbon_drilldown(client):
+    materials = pd.DataFrame(
+        {"Material": ["M1", "M2"], "Description": ["Part 1", "Part 2"],
+         "Buyer": ["Alice", "Bob"]}
+    )
+    assert _upload(client, "materials", materials).status_code == 200
+
+    # Snapshots across two years, two quarters within 2025, to exercise
+    # Year -> Quarter -> Month drilldown.
+    snaps = pd.DataFrame(
+        {
+            "Material": ["M1", "M2", "M1", "M2", "M1", "M2"],
+            "Date": ["2024-12-31", "2024-12-31",
+                     "2025-03-31", "2025-03-31",
+                     "2025-06-30", "2025-06-30"],
+            "Inventory Value": [100, 200, 150, 250, 180, 300],
+        }
+    )
+    assert _upload(client, "inventory_snapshots", snaps).status_code == 200
+
+    # Top level: by year, buyer-wise series.
+    r = client.get("/api/analytics/inventory-ribbon", params={"grain": "yearly"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["grain"] == "yearly"
+    labels = [p["label"] for p in data["points"]]
+    assert labels == ["2024", "2025"]
+    series = {s["name"]: s["values"] for s in data["series"]}
+    assert series["Alice"] == [100.0, 180.0]   # M1 -> Alice, last snapshot per year
+    assert series["Bob"] == [200.0, 300.0]     # M2 -> Bob
+
+    # Drill into 2025: bounded quarterly view shows both quarters.
+    y2025 = next(p for p in data["points"] if p["label"] == "2025")
+    r = client.get("/api/analytics/inventory-ribbon",
+                   params={"grain": "quarterly", "start": y2025["start"], "end": y2025["end"]})
+    data = r.json()
+    labels = [p["label"] for p in data["points"]]
+    assert labels == ["Q1 2025", "Q2 2025"]
+    series = {s["name"]: s["values"] for s in data["series"]}
+    assert series["Alice"] == [150.0, 180.0]
+    assert series["Bob"] == [250.0, 300.0]
+
+    # Buyer slicer scopes the ribbon to a single series.
+    r = client.get("/api/analytics/inventory-ribbon",
+                   params={"grain": "yearly", "buyer": "Alice"})
+    names = {s["name"] for s in r.json()["series"]}
+    assert names == {"Alice"}
