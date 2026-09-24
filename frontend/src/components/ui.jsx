@@ -1,6 +1,7 @@
 // Shared presentational components + data hook.
 import React from "react";
 import Icon from "./icons.jsx";
+import { HScrollSlider } from "./charts.jsx";
 
 export function fmtNum(n, digits = 0) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
@@ -109,6 +110,145 @@ export function DataTable({ columns, rows }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// Parses an optional leading comparison operator off a numeric filter
+// string (">100", "<=50", "20") so numeric columns can be range-filtered,
+// not just matched by substring.
+const NUM_FILTER = /^(>=|<=|>|<|=)?\s*(-?\d+(?:\.\d+)?)\s*$/;
+
+// A DataTable with a click-to-sort header (per column, 3-state: asc / desc /
+// off) and a per-column filter row (free-text substring for text columns —
+// with optional >, >=, <, <=, = prefixes for numeric ones — or a dropdown
+// when the column declares `filterType: "select"` + `options`). Filtering
+// and sorting run client-side over whatever rows the server already
+// returned, so it's a fast local refine on top of the global filters
+// panel — built for wide, dense report tables (e.g. Material Planning)
+// rather than replacing server-side filtering. Reuses the charts' own
+// horizontal-scroll slider so a table with many columns stays as easy to
+// pan across as a wide chart.
+export function SortableTable({ columns, rows }) {
+  const safeRows = rows || [];
+  const [sort, setSort] = React.useState({ key: null, dir: 1 });
+  const [filters, setFilters] = React.useState({});
+  const wrapRef = React.useRef(null);
+
+  const toggleSort = (key) => {
+    setSort((s) => {
+      if (s.key !== key) return { key, dir: 1 };
+      if (s.dir === 1) return { key, dir: -1 };
+      return { key: null, dir: 1 };
+    });
+  };
+  const setFilter = (key, value) => setFilters((f) => ({ ...f, [key]: value }));
+  const activeFilters = Object.entries(filters).filter(([, v]) => v);
+
+  const filtered = React.useMemo(() => {
+    if (!activeFilters.length) return safeRows;
+    return safeRows.filter((r) =>
+      activeFilters.every(([key, val]) => {
+        const col = columns.find((c) => c.key === key);
+        const raw = r[key];
+        if (col?.filterType === "select") return String(raw ?? "") === val;
+        if (col?.num) {
+          const m = NUM_FILTER.exec(val);
+          if (m) {
+            if (raw == null) return false;
+            const op = m[1] || "=", n = Number(m[2]), rv = Number(raw);
+            if (op === ">=") return rv >= n;
+            if (op === "<=") return rv <= n;
+            if (op === ">") return rv > n;
+            if (op === "<") return rv < n;
+            return rv === n;
+          }
+        }
+        return String(raw ?? "").toLowerCase().includes(val.trim().toLowerCase());
+      })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [safeRows, filters, columns]);
+
+  const sorted = React.useMemo(() => {
+    if (!sort.key) return filtered;
+    const col = columns.find((c) => c.key === sort.key);
+    const copy = [...filtered];
+    copy.sort((a, b) => {
+      const av = a[sort.key], bv = b[sort.key];
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;   // nulls sort last regardless of direction
+      if (bv == null) return -1;
+      if (col?.num) return (av - bv) * sort.dir;
+      return String(av).localeCompare(String(bv)) * sort.dir;
+    });
+    return copy;
+  }, [filtered, sort, columns]);
+
+  if (!safeRows.length) return <div className="empty">No rows.</div>;
+
+  return (
+    <div>
+      <div className="table-toolbar">
+        <span className="muted">{fmtNum(sorted.length)} of {fmtNum(safeRows.length)} rows</span>
+        {activeFilters.length > 0 && (
+          <button className="table-clear-filters" onClick={() => setFilters({})}>
+            Clear {activeFilters.length} filter{activeFilters.length > 1 ? "s" : ""}
+          </button>
+        )}
+      </div>
+      {/* Above the table, not below — with up to 1,000 rows the table can run
+          tens of thousands of pixels tall, so a slider placed after it (like
+          a chart's) would be practically unreachable. */}
+      <HScrollSlider scrollRef={wrapRef} />
+      <div className="table-wrap table-wrap-scroll" ref={wrapRef}>
+        <table>
+          <thead>
+            <tr>
+              {columns.map((c) => (
+                <th key={c.key} className={`sortable ${c.num ? "num" : ""}`} onClick={() => toggleSort(c.key)}>
+                  {c.label}
+                  <span className={`sort-ind${sort.key === c.key ? " active" : ""}`}>
+                    {sort.key === c.key ? (sort.dir === 1 ? "▲" : "▼") : "↕"}
+                  </span>
+                </th>
+              ))}
+            </tr>
+            <tr className="filter-row">
+              {columns.map((c) => (
+                <th key={c.key} className={c.num ? "num" : ""} onClick={(e) => e.stopPropagation()}>
+                  {c.filterType === "select" ? (
+                    <select value={filters[c.key] || ""} onChange={(e) => setFilter(c.key, e.target.value)}>
+                      <option value="">All</option>
+                      {(c.options || []).map((o) => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      placeholder={c.num ? "e.g. >100" : "Filter…"}
+                      value={filters[c.key] || ""}
+                      onChange={(e) => setFilter(c.key, e.target.value)}
+                    />
+                  )}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {!sorted.length ? (
+              <tr><td colSpan={columns.length} className="empty">No rows match these filters.</td></tr>
+            ) : sorted.map((r, i) => (
+              <tr key={i}>
+                {columns.map((c) => (
+                  <td key={c.key} className={c.num ? "num" : ""}>
+                    {c.render ? c.render(r[c.key], r) : (r[c.key] ?? "—")}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

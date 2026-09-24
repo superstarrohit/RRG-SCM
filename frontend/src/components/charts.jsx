@@ -33,7 +33,7 @@ function useMeasuredWidth(fallback) {
 // more categories) stays navigable rather than just "scrollable if you find
 // the edge". `ref` must point at the element with `overflow-x: auto` whose
 // child is the oversized content (the chart's own wrapRef).
-function useHScroll(ref) {
+export function useHScroll(ref) {
   const [state, setState] = React.useState({ show: false, value: 0, max: 0 });
   React.useEffect(() => {
     const el = ref.current;
@@ -58,7 +58,7 @@ function useHScroll(ref) {
   return state;
 }
 
-function HScrollSlider({ scrollRef }) {
+export function HScrollSlider({ scrollRef }) {
   const { show, value, max } = useHScroll(scrollRef);
   if (!show) return null;
   return (

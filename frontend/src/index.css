@@ -468,6 +468,31 @@ tbody tr:hover { background: var(--surface-2); }
 tbody tr:last-child td { border-bottom: none; }
 .strong { font-weight: 600; color: var(--text); }
 
+/* ---- Sortable + filterable report table (SortableTable) ---- */
+.table-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.table-toolbar .muted { font-size: 12px; }
+.table-clear-filters {
+  font-size: 12px; color: var(--primary); background: none; border: none;
+  cursor: pointer; padding: 2px 4px;
+}
+.table-clear-filters:hover { text-decoration: underline; }
+thead th.sortable { cursor: pointer; user-select: none; }
+thead th.sortable:hover { color: var(--text); }
+.sort-ind { display: inline-block; margin-left: 5px; opacity: 0.35; font-size: 9px; }
+.sort-ind.active { opacity: 1; color: var(--primary); }
+.filter-row th { padding: 6px 8px; background: var(--surface-2); cursor: default; }
+.filter-row input, .filter-row select {
+  width: 100%; min-width: 84px; box-sizing: border-box;
+  font-size: 11.5px; padding: 5px 8px; border-radius: 7px;
+}
+/* A long report table (hundreds+ rows) gets its own scrollable viewport —
+   otherwise the page itself grows to the table's full height and both the
+   scroll slider and the sort/filter header would be miles above the fold
+   once you've scrolled down to review rows. */
+.table-wrap-scroll { max-height: 640px; overflow-y: auto; }
+.table-wrap-scroll thead { position: sticky; top: 0; z-index: 1; background: var(--surface); }
+.table-wrap-scroll thead .filter-row th { background: var(--surface-2); }
+
 /* ---- Badges / pills ---- */
 .badge { display: inline-block; padding: 3px 11px; border-radius: var(--radius-full); font-size: 11px; font-weight: 700; letter-spacing: 0.2px; }
 .b-red { background: color-mix(in srgb, var(--red) 15%, transparent); color: var(--red-ink); }
