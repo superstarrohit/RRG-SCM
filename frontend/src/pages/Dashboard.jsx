@@ -3,7 +3,7 @@ import { api } from "../api/client.js";
 import {
   KpiCard, Panel, PageHeader, Loading, ErrorState, useApi, fmtNum, fmtMoneyM,
 } from "../components/ui.jsx";
-import { LineChart, DrillBars, VBars, PALETTE } from "../components/charts.jsx";
+import { DrillBars, VBars, PALETTE } from "../components/charts.jsx";
 import { useFilters } from "../components/filters.jsx";
 
 // Ribbon values are large ₹ amounts — label the axis in ₹ millions.
@@ -22,7 +22,6 @@ const LEVEL_NAME = { yearly: "Year", quarterly: "Quarter", monthly: "Month", dai
 function TrendDrilldown({ f, title, apiFn, color, emptyMessage, hint }) {
   // Each frame scopes one level to a parent period's date window.
   const [stack, setStack] = React.useState([{ level: "yearly", label: "All" }]);
-  const [chart, setChart] = React.useState("bar");
   const cur = stack[stack.length - 1];
   const nextLevel = HIER[HIER.indexOf(cur.level) + 1] || null;
 
@@ -68,14 +67,6 @@ function TrendDrilldown({ f, title, apiFn, color, emptyMessage, hint }) {
           by {LEVEL_NAME[cur.level]}
           {nextLevel && <span className="drill-hint"> · click a bar to drill into {LEVEL_NAME[nextLevel].toLowerCase()}s</span>}
         </span>
-        <span style={{ flex: 1 }} />
-        <div className="seg-toggle" role="tablist" aria-label="Chart type">
-          {[["bar", "Bars"], ["line", "Line"]].map(([k, lbl]) => (
-            <button key={k} role="tab" aria-selected={chart === k}
-                    className={`seg-btn${chart === k ? " active" : ""}`}
-                    onClick={() => setChart(k)}>{lbl}</button>
-          ))}
-        </div>
       </div>
       {error
         ? <ErrorState error={error} />
@@ -83,10 +74,8 @@ function TrendDrilldown({ f, title, apiFn, color, emptyMessage, hint }) {
           ? <div className="empty">Loading trend…</div>
           : !points.length
             ? <div className="empty">{emptyMessage}</div>
-            : chart === "bar"
-              ? <DrillBars data={points} valueFormat={axisM} color={color}
-                           onBar={drillInto} clickable={!!nextLevel} />
-              : <LineChart data={points} valueFormat={axisM} color={color} />}
+            : <DrillBars data={points} valueFormat={axisM} color={color}
+                         onBar={drillInto} clickable={!!nextLevel} />}
     </Panel>
   );
 }
