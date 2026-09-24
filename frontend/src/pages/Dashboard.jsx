@@ -3,7 +3,7 @@ import { api } from "../api/client.js";
 import {
   KpiCard, Panel, PageHeader, Loading, ErrorState, useApi, fmtNum, fmtMoneyM,
 } from "../components/ui.jsx";
-import { RibbonChart, LineChart, DrillBars, PALETTE } from "../components/charts.jsx";
+import { RibbonChart, LineChart, DrillBars, VBars, PALETTE } from "../components/charts.jsx";
 import { useFilters } from "../components/filters.jsx";
 
 // Ribbon values are large ₹ amounts — label the axis in ₹ millions.
@@ -89,6 +89,7 @@ export default function Dashboard() {
   const k = data.kpis;
   const invRibbon = data.inventory_ribbon || { months: [], series: [] };
   const incRibbon = data.incoming_ribbon || { months: [], series: [] };
+  const invByBuyer = (data.inventory_by_buyer || []).map((r) => ({ label: r.name || "Unassigned", value: r.value }));
 
   return (
     <div>
@@ -112,6 +113,13 @@ export default function Dashboard() {
 
       {/* Inventory value over time with Power BI-style click-to-drill. */}
       <InventoryDrilldown f={f} />
+
+      {/* Latest (as-on-today) inventory value per buyer — buyers on X. */}
+      <Panel title="Latest Inventory Value by Buyer">
+        {invByBuyer.length
+          ? <VBars data={invByBuyer} valueFormat={axisM} color={PALETTE.green} />
+          : <div className="empty">No inventory to chart yet.</div>}
+      </Panel>
 
       {/* Ribbon charts need the full page width for their time axis, so each
           sits in its own full-width row rather than a two-up grid. */}
