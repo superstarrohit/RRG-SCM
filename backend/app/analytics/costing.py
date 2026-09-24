@@ -61,6 +61,12 @@ def analyze(db: Session, *, as_of: date | None = None, top_n: int = 25,
         bom_map.setdefault(r["fg_material"], []).append((r["rm_material"], float(r["qty"])))
 
     parents = [p for p in bom_map if parent_codes is None or p in parent_codes]
+    if q:
+        ql = q.lower()
+        parents = [
+            p for p in parents
+            if ql in p.lower() or ql in str(desc.get(p) or bom_desc.get(p) or "").lower()
+        ]
 
     rows = []
     for parent in parents:

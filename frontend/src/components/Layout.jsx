@@ -1,7 +1,7 @@
 import React from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import Icon from "./icons.jsx";
-import { FilterBar } from "./filters.jsx";
+import { FiltersPanel } from "./filters.jsx";
 import { ThemeCenterButton } from "./theme.jsx";
 
 const TABS = [
@@ -85,10 +85,12 @@ export default function Layout({ children }) {
           </button>
         </div>
       </header>
-      <FilterBar />
-      <main className="content">
-        <div className="page-enter" key={location.pathname}>{children}</div>
-      </main>
+      <div className="body-shell">
+        <main className="content">
+          <div className="page-enter" key={location.pathname}>{children}</div>
+        </main>
+        <FiltersPanel />
+      </div>
     </div>
   );
 }

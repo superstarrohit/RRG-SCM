@@ -243,3 +243,27 @@ def test_overview_date_range_filter(client):
                    params={"start": "2024-01-01", "end": "2024-06-30"}).json()
     assert d["kpis"]["inventory_value"] == 0.0
     assert d["inventory_by_buyer"] == []
+
+
+def test_costing_description_search_filter(client):
+    materials = pd.DataFrame(
+        {"Material": ["FG1", "FG2"], "Description": ["Widget Assembly", "Gasket Assembly"],
+         "Cost": [10.0, 5.0]}
+    )
+    assert _upload(client, "materials", materials).status_code == 200
+
+    bom = pd.DataFrame(
+        {"fg_material": ["FG1", "FG2"], "rm_material": ["RM1", "RM2"], "qty": [2, 3]}
+    )
+    assert _upload(client, "bom", bom).status_code == 200
+
+    # Unfiltered: both finished goods show up.
+    d = client.get("/api/analytics/costing").json()
+    codes = {r["material_code"] for r in d["cost_rollup"]}
+    assert codes == {"FG1", "FG2"}
+
+    # The description search box narrows the roll-up (was previously a dead
+    # parameter on this endpoint — accepted but never applied).
+    d = client.get("/api/analytics/costing", params={"q": "gasket"}).json()
+    codes = {r["material_code"] for r in d["cost_rollup"]}
+    assert codes == {"FG2"}
