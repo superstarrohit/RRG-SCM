@@ -138,12 +138,11 @@ export function SortableTable({ columns, rows }) {
   const [filters, setFilters] = React.useState({});
   const wrapRef = React.useRef(null);
 
+  // Ascending <-> descending only — a 3rd state that cleared the sort
+  // entirely made repeated clicks snap the table back to its original,
+  // unsorted order, which read as the sort "reverting" on its own.
   const toggleSort = (key) => {
-    setSort((s) => {
-      if (s.key !== key) return { key, dir: 1 };
-      if (s.dir === 1) return { key, dir: -1 };
-      return { key: null, dir: 1 };
-    });
+    setSort((s) => (s.key === key && s.dir === 1 ? { key, dir: -1 } : { key, dir: 1 }));
   };
   const setFilter = (key, value) => setFilters((f) => ({ ...f, [key]: value }));
   const activeFilters = Object.entries(filters).filter(([, v]) => v);
