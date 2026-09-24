@@ -1,74 +1,54 @@
 import React from "react";
 import { api } from "../api/client.js";
 import {
-  KpiCard, Panel, PageHeader, DataTable, Badge,
-  Loading, ErrorState, EmptyState, useApi, fmtMoney, fmtNum,
+  Panel, PageHeader, DataTable, Badge,
+  Loading, ErrorState, EmptyState, useApi, fmtNum,
 } from "../components/ui.jsx";
-import { Donut, PALETTE } from "../components/charts.jsx";
 import { useFilters } from "../components/filters.jsx";
+
+// Maps our five stock-health statuses onto the shared Badge color palette
+// (see StockMonitoring.jsx's STATUS_BADGE for the same convention).
+const STATUS_BADGE = { Stockout: "short", Risk: "short", Alarm: "due_this_month", Safe: "ok", Excess: "excess" };
 
 const planCols = [
   { key: "material_code", label: "Material", render: (v) => <span className="mono strong">{v}</span> },
-  { key: "description", label: "Description" },
-  { key: "on_hand", label: "On Hand", num: true, render: (v) => fmtNum(v) },
-  { key: "incoming", label: "Incoming", num: true, render: (v) => fmtNum(v) },
-  { key: "demand", label: "Demand", num: true, render: (v) => fmtNum(v) },
-  { key: "net_requirement", label: "Net Req", num: true, render: (v) => fmtNum(v) },
-  { key: "coverage_days", label: "Cover (d)", num: true, render: (v) => v == null ? "—" : fmtNum(v, 1) },
-  { key: "suggested_order", label: "Suggest Order", num: true, render: (v) => fmtNum(v) },
-  { key: "order_value", label: "Order Value", num: true, render: fmtMoney },
-  { key: "status", label: "Status", render: (v) => <Badge value={v} /> },
+  { key: "description", label: "Material Description" },
+  { key: "m1_demand", label: "Demand (M1)", num: true, render: (v) => fmtNum(v) },
+  { key: "safety_stock", label: "Safety Stock", num: true, render: (v) => fmtNum(v) },
+  { key: "current_stock", label: "Current Stock", num: true, render: (v) => fmtNum(v) },
+  { key: "warehouse_stock", label: "Warehouse Stock", num: true, render: (v) => fmtNum(v) },
+  { key: "reach_days", label: "Reach (Days)", num: true, render: (v) => v == null ? "—" : fmtNum(v, 1) },
+  { key: "status", label: "Material Status", render: (v) => <Badge value={STATUS_BADGE[v]} label={v} /> },
+  { key: "open_po", label: "Open PO", num: true, render: (v) => fmtNum(v) },
+  { key: "m1_shortage", label: "Shortage (M1)", num: true, render: (v) => fmtNum(v) },
+  { key: "m2_demand", label: "M2 Requirement", num: true, render: (v) => fmtNum(v) },
+  { key: "m2_shortage", label: "M2 Shortage", num: true, render: (v) => fmtNum(v) },
+  { key: "m3_demand", label: "M3 Requirement", num: true, render: (v) => fmtNum(v) },
+  { key: "m3_shortage", label: "M3 Shortage", num: true, render: (v) => fmtNum(v) },
+  { key: "m4_demand", label: "M4 Requirement", num: true, render: (v) => fmtNum(v) },
+  { key: "m4_shortage", label: "M4 Shortage", num: true, render: (v) => fmtNum(v) },
 ];
 
 export default function Planning() {
   const f = useFilters();
-  const { loading, data, error } = useApi(() => api.planning({ top_n: 25, ...f.params }), [f.key]);
+  const { loading, data, error } = useApi(() => api.planning(f.params), [f.key]);
   if (loading) return <Loading />;
   if (error) return <ErrorState error={error} />;
 
   const head = (
     <PageHeader
       title="Material Planning (MRP)"
-      subtitle="Net requirements, shortages, excess and reorder alerts with MOQ-aware suggested orders."
+      subtitle="Current stock vs safety / refill / max levels, this month's demand and shortage, and the M2–M4 requirement outlook."
       asOf={data.as_of}
     />
   );
   if (data.empty) return <div>{head}<EmptyState message={data.message} /></div>;
 
-  const k = data.kpis;
-  const ok = Math.max(0, k.materials_planned - k.shortage_items - k.excess_items);
-  const segs = [
-    { label: "Shortage", value: k.shortage_items, color: PALETTE.red },
-    { label: "Excess", value: k.excess_items, color: PALETTE.amber },
-    { label: "Balanced", value: ok, color: PALETTE.green },
-  ];
-
   return (
     <div>
       {head}
-      <div className="kpi-grid">
-        <KpiCard label="Materials Planned" value={fmtNum(k.materials_planned)} icon="box" tone="blue" />
-        <KpiCard label="Shortage Items" value={fmtNum(k.shortage_items)} icon="alert" tone="red" />
-        <KpiCard label="Excess Items" value={fmtNum(k.excess_items)} icon="layers" tone="amber" />
-        <KpiCard label="Total Shortage Qty" value={fmtNum(k.total_shortage_qty)} icon="box" tone="purple" />
-        <KpiCard label="Suggested Order Value" value={fmtMoney(k.suggested_order_value)} icon="dollar" tone="green" />
-        <KpiCard label="At/Below Reorder Point" value={fmtNum(k.at_or_below_rop)} icon="clock" tone="amber" />
-      </div>
-
-      <div className="panel-grid">
-        <Panel title="Planning Health">
-          <Donut segments={segs} centerValue={fmtNum(k.materials_planned)} centerLabel="materials" />
-        </Panel>
-        <Panel title="🔴 Shortages — Recommended Purchases">
-          <DataTable columns={planCols} rows={data.shortages} />
-        </Panel>
-      </div>
-
-      <Panel title="🟡 Reorder Point Alerts">
-        <DataTable columns={planCols} rows={data.reorder_alerts} />
-      </Panel>
-      <Panel title="🟢 Excess / Slow-Moving">
-        <DataTable columns={planCols} rows={data.excess} />
+      <Panel title={`Material Plan — ${fmtNum(data.rows.length)} materials`}>
+        <DataTable columns={planCols} rows={data.rows} />
       </Panel>
     </div>
   );

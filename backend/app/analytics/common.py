@@ -281,6 +281,37 @@ def latest_warehouse_stock(db: Session) -> pd.DataFrame:
     })
 
 
+def latest_inventory_stock(db: Session) -> pd.DataFrame:
+    """Load the latest on-hand qty + value per material from the daily
+    inventory-snapshot history — the same "today" stock the Dashboard's
+    inventory-value KPI is built from. Collapses to the most recent
+    ``snapshot_date`` per (material_code, location).
+    """
+    rn = (
+        func.row_number()
+        .over(
+            partition_by=(InventorySnapshot.material_code, InventorySnapshot.location),
+            order_by=InventorySnapshot.snapshot_date.desc(),
+        )
+        .label("rn")
+    )
+    sub = select(InventorySnapshot, rn).subquery()
+    rows = db.execute(select(sub).where(sub.c.rn == 1)).all()
+    cols = [c.name for c in InventorySnapshot.__table__.columns]
+    if not rows:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame([dict(r._mapping) for r in rows])[cols]
+
+
+def qty_by_material(df: pd.DataFrame, qty_col: str = "qty") -> dict:
+    """Sum a stock frame's quantity column per material_code."""
+    if df.empty or qty_col not in df or "material_code" not in df:
+        return {}
+    d = df.copy()
+    d[qty_col] = pd.to_numeric(d[qty_col], errors="coerce").fillna(0.0)
+    return d.groupby("material_code")[qty_col].sum().to_dict()
+
+
 def location_options_db(db: Session) -> list[str]:
     """Distinct site/warehouse values, queried directly (no full-table load).
 

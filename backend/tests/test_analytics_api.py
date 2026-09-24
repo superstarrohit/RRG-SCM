@@ -269,6 +269,82 @@ def test_costing_description_search_filter(client):
     assert codes == {"FG2"}
 
 
+def test_material_planning_report(client):
+    materials = pd.DataFrame({
+        "Material": ["M-SAFE", "M-STOCKOUT", "M-RISK", "M-ALARM", "M-EXCESS", "M-OPENPO"],
+        "Description": ["Safe Item", "Stockout Item", "Risk Item", "Alarm Item", "Excess Item", "Open PO Item"],
+        "Commodity": ["Raw", "Raw", "Comp", "Comp", "Raw", "Raw"],
+        "Buyer": ["Alice", "Bob", "Alice", "Bob", "Alice", "Alice"],
+        "Safety Stock": [50, 10, 10, 10, 10, 20],
+        "Refill Level": [100, 20, 20, 20, 20, 0],
+        "Max Level": [500, 100, 100, 100, 100, 0],
+        "Demand": [200, 50, 10, 10, 10, 100],
+        "Demand 2": [150, 0, 0, 0, 0, 0],
+        "Demand 3": [100, 0, 0, 0, 0, 0],
+        "Demand 4": [50, 0, 0, 0, 0, 0],
+    })
+    assert _upload(client, "materials", materials).status_code == 200
+
+    snaps = pd.DataFrame({
+        "Material": ["M-SAFE", "M-RISK", "M-ALARM", "M-EXCESS", "M-OPENPO"],
+        "Date": ["2025-06-30"] * 5,
+        "On Hand": [300, 5, 15, 600, 50],
+        "Inventory Value": [3000, 50, 150, 6000, 500],
+    })
+    assert _upload(client, "inventory_snapshots", snaps).status_code == 200
+
+    wh = pd.DataFrame({
+        "Material": ["M-SAFE"],
+        "Plant": ["P1"],
+        "Storage Location": ["L1"],
+        "Stock": [120],
+        "Date": ["2025-06-30"],
+    })
+    assert _upload(client, "warehouse_stock", wh).status_code == 200
+
+    pos = pd.DataFrame({
+        "PO No": ["PO-1"], "Material": ["M-OPENPO"], "Vendor": ["V1"],
+        "Open Qty": [30], "ETA": ["2025-07-15"],
+    })
+    assert _upload(client, "open_pos", pos).status_code == 200
+
+    r = client.get("/api/analytics/planning")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["empty"] is False
+    rows = {row["material_code"]: row for row in data["rows"]}
+
+    # Status classification: Stockout (=0) > Risk (< safety) > Alarm (< refill)
+    # > Excess (> max), else Safe.
+    assert rows["M-STOCKOUT"]["status"] == "Stockout"
+    assert rows["M-RISK"]["status"] == "Risk"
+    assert rows["M-ALARM"]["status"] == "Alarm"
+    assert rows["M-EXCESS"]["status"] == "Excess"
+    assert rows["M-SAFE"]["status"] == "Safe"
+
+    safe = rows["M-SAFE"]
+    assert safe["current_stock"] == 300.0
+    assert safe["warehouse_stock"] == 120.0  # sourced independently from the warehouse-stock dump
+    assert safe["reach_days"] == 30.0  # 300 / (200 demand / 20 working days)
+    # Rolling M1-M4 net requirement, each month required to still leave
+    # safety stock on hand at its end.
+    assert safe["m1_demand"] == 200.0 and safe["m1_shortage"] == 0.0
+    assert safe["m2_demand"] == 150.0 and safe["m2_shortage"] == 100.0
+    assert safe["m3_demand"] == 100.0 and safe["m3_shortage"] == 100.0
+    assert safe["m4_demand"] == 50.0 and safe["m4_shortage"] == 50.0
+
+    # Open POs offset the shortfall: without the 30 open, M1 shortage would
+    # be 70 (safety 20 - (50 - 100)); with it, it's 40.
+    openpo = rows["M-OPENPO"]
+    assert openpo["open_po"] == 30.0
+    assert openpo["m1_shortage"] == 40.0
+
+    # Buyer slicer scopes the report like every other page.
+    r = client.get("/api/analytics/planning", params={"buyer": "Alice"})
+    codes = {row["material_code"] for row in r.json()["rows"]}
+    assert codes == {"M-SAFE", "M-RISK", "M-EXCESS", "M-OPENPO"}
+
+
 def test_incoming_timeseries_pending_until_movements_loaded(client):
     r = client.get("/api/analytics/incoming-timeseries")
     assert r.status_code == 200

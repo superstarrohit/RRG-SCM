@@ -104,11 +104,10 @@ def get_incoming(
 @router.get("/planning")
 def get_planning(
     as_of: str | None = Query(None),
-    top_n: int = Query(20, ge=1, le=200),
     f: dict = Depends(_slicers),
     db: Session = Depends(get_db),
 ) -> dict:
-    return material_planning.analyze(db, as_of=_as_of(as_of), top_n=top_n, **f)
+    return material_planning.analyze(db, as_of=_as_of(as_of), **f)
 
 
 @router.get("/sourcing")
