@@ -106,19 +106,18 @@ def analyze(db: Session, *, as_of: date | None = None,
     daily_demand = base["demand"] / WORKING_DAYS_PER_MONTH
     base["reach_days"] = np.where(daily_demand > 0, base["current_stock"] / daily_demand, np.nan)
 
-    # Roll M1..M4 forward as a standard net-requirement / balance rollup:
-    #   Forecast[n] = max(0, Demand[n] + Safety - Bal[n-1])   (Bal[0] = current stock)
-    #   Bal[n]      = Forecast[n] + Bal[n-1] - Demand[n]
+    # Roll M1..M4 forward as a net-requirement / balance rollup:
+    #   Forecast[n] = max(0, Demand[n] + Safety - Bal[n-1])       (Bal[0] = current stock)
+    #   Bal[n]      = (Forecast[n] + Bal[n-1]) - (Demand[n] + Safety)
     # Forecast is what to procure that month to still hold safety stock by
-    # its end (floored at 0 — you can't procure a negative amount); Bal is
-    # the resulting projected closing stock, which feeds the next month in
-    # place of "current stock".
+    # its end (floored at 0 — you can't procure a negative amount); Bal
+    # feeds the next month in place of "current stock".
     balance = base["current_stock"]
     monthly = {}
     for label, col in MONTHS:
         demand = base[col]
         forecast = (demand + base["safety_stock"] - balance).clip(lower=0)
-        bal = forecast + balance - demand
+        bal = (forecast + balance) - (demand + base["safety_stock"])
         monthly[label] = (demand, forecast, bal)
         balance = bal
 

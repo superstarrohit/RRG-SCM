@@ -326,24 +326,24 @@ def test_material_planning_report(client):
     assert safe["current_stock"] == 300.0
     assert safe["warehouse_stock"] == 120.0  # sourced independently from the warehouse-stock dump
     assert safe["reach_days"] == 30.0  # 300 / (200 demand / 20 working days)
-    # Standard MRP net-requirement / balance rollup, chained M1 -> M4:
-    #   Forecast[n] = max(0, Demand[n] + Safety - Bal[n-1])   (Bal[0] = current stock)
-    #   Bal[n]      = Forecast[n] + Bal[n-1] - Demand[n]
-    # M1: forecast = max(0, 200+50-300) = 0;   bal = 0+300-200   = 100
-    # M2: forecast = max(0, 150+50-100) = 100; bal = 100+100-150 = 50
-    # M3: forecast = max(0, 100+50-50)  = 100; bal = 100+50-100  = 50
-    # M4: forecast = max(0, 50+50-50)   = 50;  bal = 50+50-50    = 50
-    assert safe["m1_demand"] == 200.0 and safe["m1_forecast"] == 0.0 and safe["m1_bal"] == 100.0
-    assert safe["m2_demand"] == 150.0 and safe["m2_forecast"] == 100.0 and safe["m2_bal"] == 50.0
-    assert safe["m3_demand"] == 100.0 and safe["m3_forecast"] == 100.0 and safe["m3_bal"] == 50.0
-    assert safe["m4_demand"] == 50.0 and safe["m4_forecast"] == 50.0 and safe["m4_bal"] == 50.0
+    # Net-requirement / balance rollup, chained M1 -> M4:
+    #   Forecast[n] = max(0, Demand[n] + Safety - Bal[n-1])          (Bal[0] = current stock)
+    #   Bal[n]      = (Forecast[n] + Bal[n-1]) - (Demand[n] + Safety)
+    # M1: forecast = max(0, 200+50-300) = 0;   bal = (0+300)-(200+50)   = 50
+    # M2: forecast = max(0, 150+50-50)  = 150; bal = (150+50)-(150+50) = 0
+    # M3: forecast = max(0, 100+50-0)   = 150; bal = (150+0)-(100+50)  = 0
+    # M4: forecast = max(0, 50+50-0)    = 100; bal = (100+0)-(50+50)   = 0
+    assert safe["m1_demand"] == 200.0 and safe["m1_forecast"] == 0.0 and safe["m1_bal"] == 50.0
+    assert safe["m2_demand"] == 150.0 and safe["m2_forecast"] == 150.0 and safe["m2_bal"] == 0.0
+    assert safe["m3_demand"] == 100.0 and safe["m3_forecast"] == 150.0 and safe["m3_bal"] == 0.0
+    assert safe["m4_demand"] == 50.0 and safe["m4_forecast"] == 100.0 and safe["m4_bal"] == 0.0
 
     # Open PO is shown as its own column but isn't folded into the
     # Forecast/Bal rollup, which nets purely against current stock.
-    # M1: forecast = max(0, 100+20-50) = 70; bal = 70+50-100 = 20
+    # M1: forecast = max(0, 100+20-50) = 70; bal = (70+50)-(100+20) = 0
     openpo = rows["M-OPENPO"]
     assert openpo["open_po"] == 30.0
-    assert openpo["m1_forecast"] == 70.0 and openpo["m1_bal"] == 20.0
+    assert openpo["m1_forecast"] == 70.0 and openpo["m1_bal"] == 0.0
 
     # Buyer slicer scopes the report like every other page.
     r = client.get("/api/analytics/planning", params={"buyer": "Alice"})
