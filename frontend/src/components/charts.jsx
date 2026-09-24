@@ -487,10 +487,8 @@ export function DrillBars({ data, valueFormat = (v) => v, height = 300, color = 
               <rect x={padL + gap * i} y={padT} width={gap} height={chartH} fill="transparent" />
               <rect x={x} y={y} width={Math.max(bw, 2)} height={Math.max(h, 1)} rx="6"
                     fill={`url(#db-${gid})`} filter={`url(#dbg-${gid})`} />
-              {!many && (
-                <text x={x + bw / 2} y={y - 6} textAnchor="middle" fontSize="10.5"
-                      fontWeight="700" fill="var(--text)">{valueFormat(d.value)}</text>
-              )}
+              <text x={x + bw / 2} y={y - 6} textAnchor="middle" fontSize="10.5"
+                    fontWeight="700" fill="var(--text)">{valueFormat(d.value)}</text>
               {showLabel && (
                 <text x={padL + gap * i + gap / 2} y={height - padB + 16} textAnchor="middle"
                       fontSize="10.5" fill="var(--text-dim)">{d.label}</text>
