@@ -55,6 +55,7 @@ export const api = {
   ingestionLog: () => get("/ingest/log"),
   overview: (p) => get("/analytics/overview", p),
   inventoryTimeseries: (p) => get("/analytics/inventory-timeseries", p),
+  incomingTimeseries: (p) => get("/analytics/incoming-timeseries", p),
   inventoryRibbon: (p) => get("/analytics/inventory-ribbon", p),
   incoming: (p) => get("/analytics/incoming", p),
   planning: (p) => get("/analytics/planning", p),

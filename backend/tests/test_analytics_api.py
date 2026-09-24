@@ -267,3 +267,12 @@ def test_costing_description_search_filter(client):
     d = client.get("/api/analytics/costing", params={"q": "gasket"}).json()
     codes = {r["material_code"] for r in d["cost_rollup"]}
     assert codes == {"FG2"}
+
+
+def test_incoming_timeseries_pending_until_movements_loaded(client):
+    r = client.get("/api/analytics/incoming-timeseries")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["grain"] == "monthly"
+    assert data["points"] == []
+    assert data["pending"] is True

@@ -13,10 +13,13 @@ const axisM = (v) => "₹" + Number(v / 1e6).toLocaleString("en-IN", { maximumFr
 const HIER = ["yearly", "quarterly", "monthly", "daily"];
 const LEVEL_NAME = { yearly: "Year", quarterly: "Quarter", monthly: "Month", daily: "Day" };
 
-// Inventory value over time with a Power BI-style click-to-drill hierarchy
-// (Year → Quarter → Month → Day). Clicking a bar drills into that period;
-// the breadcrumb and ▲ button drill back up. Respects the global slicers.
-function InventoryDrilldown({ f }) {
+// Value over time with a Power BI-style click-to-drill hierarchy (Year →
+// Quarter → Month → Day). Clicking a bar drills into that period; the
+// breadcrumb and ▲ button drill back up. Respects the global slicers.
+// `apiFn` fetches {points, pending?} for the current level; `emptyMessage`
+// covers both "no data in this window" and (via `pending`) "not wired up
+// yet" cases — e.g. incoming receipts before a movements file is loaded.
+function TrendDrilldown({ f, title, apiFn, color, emptyMessage, hint }) {
   // Each frame scopes one level to a parent period's date window.
   const [stack, setStack] = React.useState([{ level: "yearly", label: "All" }]);
   const [chart, setChart] = React.useState("bar");
@@ -31,13 +34,14 @@ function InventoryDrilldown({ f }) {
   // filter (already in f.params) is left to take effect on its own — setting
   // start/end here to undefined would instead erase it.
   const { loading, data, error } = useApi(
-    () => api.inventoryTimeseries({
+    () => apiFn({
       ...f.params, grain: cur.level,
       ...(cur.start ? { start: cur.start, end: cur.end } : {}),
     }),
     [f.key, cur.level, cur.start, cur.end],
   );
   const points = data?.points || [];
+  const pending = !!data?.pending;
 
   const drillInto = (p) => {
     if (!nextLevel) return;
@@ -47,7 +51,7 @@ function InventoryDrilldown({ f }) {
   const drillUp = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
 
   return (
-    <Panel title="Inventory Value Trend">
+    <Panel title={title} hint={pending ? (hint || "") : ""}>
       <div className="drill-bar">
         <button className="drill-up" onClick={drillUp} disabled={stack.length === 1}
                 title="Drill up" aria-label="Drill up">▲</button>
@@ -78,11 +82,11 @@ function InventoryDrilldown({ f }) {
         : loading
           ? <div className="empty">Loading trend…</div>
           : !points.length
-            ? <div className="empty">No inventory history in this period.</div>
+            ? <div className="empty">{emptyMessage}</div>
             : chart === "bar"
-              ? <DrillBars data={points} valueFormat={axisM} color={PALETTE.cyan}
+              ? <DrillBars data={points} valueFormat={axisM} color={color}
                            onBar={drillInto} clickable={!!nextLevel} />
-              : <LineChart data={points} valueFormat={axisM} color={PALETTE.cyan} />}
+              : <LineChart data={points} valueFormat={axisM} color={color} />}
     </Panel>
   );
 }
@@ -116,8 +120,12 @@ export default function Dashboard() {
         <KpiCard label="Materials" value={fmtNum(k.materials)} icon="cube" tone="cyan" />
       </div>
 
-      {/* Inventory value over time with Power BI-style click-to-drill. */}
-      <InventoryDrilldown f={f} />
+      {/* Value over time with Power BI-style click-to-drill. */}
+      <TrendDrilldown f={f} title="Inventory Value Trend" apiFn={api.inventoryTimeseries}
+                      color={PALETTE.cyan} emptyMessage="No inventory history in this period." />
+      <TrendDrilldown f={f} title="Incoming Receipts Trend" apiFn={api.incomingTimeseries}
+                      color={PALETTE.blue} hint="awaiting movements upload"
+                      emptyMessage="Upload a movements file to see incoming receipts over time." />
 
       {/* Latest (as-on-today) inventory value per buyer — buyers on X. */}
       <Panel title="Latest Inventory Value by Buyer">

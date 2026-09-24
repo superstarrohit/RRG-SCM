@@ -182,6 +182,32 @@ def inventory_timeseries(db: Session, *, grain: str = "monthly",
     return {"grain": grain, "points": points}
 
 
+def incoming_timeseries(db: Session, *, grain: str = "monthly",
+                        start: str | None = None, end: str | None = None,
+                        commodity: str | None = None, buyer: str | None = None,
+                        material: str | None = None, supplier: str | None = None,
+                        location: str | None = None, q: str | None = None) -> dict:
+    """Incoming receipts value over time — the trend counterpart of
+    ``inventory_timeseries``, drillable the same way (Year → Quarter → Month
+    → Day). Each period is a *sum* of that period's net receipts (GR minus
+    reversals-of-GR minus returns-to-vendor), unlike inventory's period-end
+    snapshot, since receipts are a flow rather than a stock.
+
+    Needs a movements transactions table, which isn't loaded yet, so this
+    returns an empty, pending series until one is — the Dashboard shows an
+    "awaiting movements upload" empty state for it, same as the other
+    incoming-value displays.
+    """
+    from app.analytics.common import _MODEL_BY_NAME
+    grain = grain if grain in {"daily", "weekly", "monthly", "quarterly", "yearly"} else "monthly"
+    if "movements" not in _MODEL_BY_NAME:
+        return {"grain": grain, "points": [], "pending": True}
+    # Wired up once the movements schema is known: bucket by date same as
+    # inventory_timeseries' _bucket(), but sum net GR value within each
+    # period instead of taking the period's last snapshot.
+    return {"grain": grain, "points": [], "pending": True}
+
+
 def inventory_ribbon(db: Session, *, grain: str = "yearly",
                      start: str | None = None, end: str | None = None,
                      commodity: str | None = None, buyer: str | None = None,
