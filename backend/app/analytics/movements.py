@@ -11,6 +11,13 @@ from app.analytics.common import (
 )
 from sqlalchemy.orm import Session
 
+# Movement-type codes that add to on-hand stock vs. consume it. Transfers
+# (301/311) move stock between locations without changing the company-wide
+# total, so they count toward neither — qty/value still show up in `by_type`
+# and `recent`, just not in the inflow/outflow net.
+_INFLOW_MVT = {"101"}
+_OUTFLOW_MVT = {"102", "201", "501", "551", "601"}
+
 
 def analyze(db: Session, *, as_of: date | None = None,
             commodity: str | None = None, buyer: str | None = None,
@@ -64,8 +71,9 @@ def analyze(db: Session, *, as_of: date | None = None,
         for t in types:
             series[t].append(safe_round(sub.get(t, 0.0)))
 
-    inflow = mv[mv["qty"] > 0]["qty"].sum()
-    outflow = -mv[mv["qty"] < 0]["qty"].sum()
+    mvt_codes = mv["mvt"].astype(str)
+    inflow = mv.loc[mvt_codes.isin(_INFLOW_MVT), "qty"].sum()
+    outflow = mv.loc[mvt_codes.isin(_OUTFLOW_MVT), "qty"].sum()
     kpis = {
         "movements": int(len(mv)),
         "inflow_qty": safe_round(inflow),

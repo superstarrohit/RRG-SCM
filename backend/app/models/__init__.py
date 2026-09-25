@@ -10,6 +10,7 @@ from app.models.master import (
 from app.models.product import BOMLine
 from app.models.transactions import (
     InventorySnapshot,
+    Movement,
     PurchaseOrder,
     WarehouseStock,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "PurchaseOrder",
     "InventorySnapshot",
     "WarehouseStock",
+    "Movement",
     "BOMLine",
     "IngestionLog",
 ]

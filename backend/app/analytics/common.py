@@ -13,6 +13,7 @@ from app.models import (
     InventorySnapshot,
     LocationMaster,
     Material,
+    Movement,
     MovementMaster,
     PurchaseOrder,
     SOBMaster,
@@ -27,6 +28,7 @@ _MODEL_BY_NAME = {
     "open_pos": PurchaseOrder,
     "warehouse_stock": WarehouseStock,
     "inventory_snapshots": InventorySnapshot,
+    "movements": Movement,
     "bom": BOMLine,
 }
 

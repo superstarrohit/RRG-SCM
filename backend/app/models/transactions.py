@@ -61,6 +61,34 @@ class InventorySnapshot(Base, TimestampMixin):
     value: Mapped[float] = mapped_column(Float, default=0.0)
 
 
+class Movement(Base, TimestampMixin):
+    """Goods-movement transactions — receipts, issues, transfers, returns and
+    scrap — one row per movement document line.
+
+    ``mvt`` is the raw SAP-style movement-type code (101 GR, 201 issue to
+    production, 301/311 transfers, 501 return to vendor, 551 scrap, 601
+    delivery to customer, …); ``mvt_type`` is its human-readable label,
+    already provided inline in the uploaded dump.
+    """
+
+    __tablename__ = "movements"
+    __table_args__ = (
+        Index("ix_movements_material_date", "material_code", "movement_date"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    movement_date: Mapped[date | None] = mapped_column(Date, index=True)
+    material_code: Mapped[str] = mapped_column(String(64), index=True)
+    description: Mapped[str | None] = mapped_column(String(255))
+    mvt: Mapped[str | None] = mapped_column(String(16), index=True)
+    mvt_type: Mapped[str | None] = mapped_column(String(255))
+    qty: Mapped[float] = mapped_column(Float, default=0.0)
+    value: Mapped[float] = mapped_column(Float, default=0.0)
+    from_location: Mapped[str | None] = mapped_column(String(64))
+    to_location: Mapped[str | None] = mapped_column(String(64))
+    document_no: Mapped[str | None] = mapped_column(String(64), index=True)
+
+
 class WarehouseStock(Base, TimestampMixin):
     """Daily warehouse-stock snapshot, per plant × storage location × material.
 

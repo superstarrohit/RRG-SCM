@@ -22,7 +22,7 @@ from app.analytics.common import (
     supplier_material_codes,
     supplier_options_db,
 )
-from app.models import InventorySnapshot, SOBMaster
+from app.models import InventorySnapshot, Movement, SOBMaster
 
 
 def _apply_supplier(db: Session, codes, supplier):
@@ -65,10 +65,10 @@ def analyze(db: Session, *, as_of: date | None = None,
     inv_total, inv_by_buyer, inv_as_of = _inventory_today(
         db, allowed, buyer_of, location, has_filter=has_filter, cutoff=cutoff, start=start)
 
-    # --- Incoming receipts value (this month) from goods movements: GR +
-    # reversal of GR + return-to-vendor. Needs a movements transactions table,
-    # which isn't loaded yet — 0 / empty until it is. ---
-    incoming_total, incoming_by_buyer, incoming_pending = _incoming_receipts(db, allowed, buyer_of, as_of)
+    # --- Incoming receipts value (this month) from goods movements: GR -
+    # reversal of GR - return-to-vendor. ---
+    incoming_total, incoming_by_buyer, incoming_pending = _incoming_receipts(
+        db, allowed, buyer_of, has_filter, as_of)
 
     # Buyer-wise trends for the ribbon charts (last 12 months, bounded by the
     # date-range filter when one is active).
@@ -193,19 +193,48 @@ def incoming_timeseries(db: Session, *, grain: str = "monthly",
     reversals-of-GR minus returns-to-vendor), unlike inventory's period-end
     snapshot, since receipts are a flow rather than a stock.
 
-    Needs a movements transactions table, which isn't loaded yet, so this
-    returns an empty, pending series until one is — the Dashboard shows an
-    "awaiting movements upload" empty state for it, same as the other
-    incoming-value displays.
+    Returns an empty, pending series until the movements dump is loaded —
+    the Dashboard shows an "awaiting movements upload" empty state for it.
     """
     from app.analytics.common import _MODEL_BY_NAME
     grain = grain if grain in {"daily", "weekly", "monthly", "quarterly", "yearly"} else "monthly"
     if "movements" not in _MODEL_BY_NAME:
         return {"grain": grain, "points": [], "pending": True}
-    # Wired up once the movements schema is known: bucket by date same as
-    # inventory_timeseries' _bucket(), but sum net GR value within each
-    # period instead of taking the period's last snapshot.
-    return {"grain": grain, "points": [], "pending": True}
+    if db.execute(select(func.count()).select_from(Movement)).scalar() == 0:
+        return {"grain": grain, "points": [], "pending": True}
+
+    materials = materials_df(db)
+    codes = allowed_codes(materials, commodity, buyer, material)
+    codes = _apply_supplier(db, codes, supplier)
+    fmats = apply_search(
+        materials if codes is None else materials[materials["material_code"].isin(codes)],
+        q, ["material_code", "description"],
+    )
+    has_filter = codes is not None or bool(q)
+    allowed = set(fmats["material_code"]) if not fmats.empty else set()
+
+    stmt = select(Movement.movement_date, Movement.mvt, Movement.material_code, Movement.value).where(
+        Movement.mvt.in_([_GR, _GR_REVERSAL, _RETURN_VENDOR])
+    )
+    if start:
+        stmt = stmt.where(Movement.movement_date >= start)
+    if end:
+        stmt = stmt.where(Movement.movement_date <= end)
+    rows = db.execute(stmt).all()
+
+    buckets: dict[str, dict] = {}
+    for dt, mvt, code, val in rows:
+        if has_filter and code not in allowed:
+            continue
+        d = _to_date(dt)
+        key, label, ps, pe = _bucket(d, grain)
+        b = buckets.setdefault(
+            key, {"key": key, "label": label, "start": ps.isoformat(), "end": pe.isoformat(), "value": 0.0}
+        )
+        b["value"] += float(val or 0.0) if mvt == _GR else -float(val or 0.0)
+
+    points = [{**buckets[k], "value": safe_round(buckets[k]["value"])} for k in sorted(buckets)]
+    return {"grain": grain, "points": points, "pending": False}
 
 
 def inventory_ribbon(db: Session, *, grain: str = "yearly",
@@ -351,18 +380,43 @@ def _inventory_today(db, allowed: set, buyer_of: dict, location, has_filter: boo
 _GR, _GR_REVERSAL, _RETURN_VENDOR = "101", "102", "501"
 
 
-def _incoming_receipts(db, allowed: set, buyer_of: dict, as_of):
+def _incoming_receipts(db, allowed: set, buyer_of: dict, has_filter: bool, as_of):
     """Net incoming receipts value for the current month, by buyer.
 
-    GR minus reversals-of-GR minus returns-to-vendor. Sourced from a movements
-    transactions table; returns (0, [], pending=True) until one is loaded.
+    GR minus reversals-of-GR minus returns-to-vendor. Sourced from the
+    movements transactions table; returns (0, [], pending=True) until one is
+    loaded.
     """
-    from app.analytics.common import _MODEL_BY_NAME, load_df
+    from app.analytics.common import _MODEL_BY_NAME
     if "movements" not in _MODEL_BY_NAME:
         return 0.0, [], True
-    mv = load_df(db, "movements")
-    if mv.empty:
+    if db.execute(select(func.count()).select_from(Movement)).scalar() == 0:
         return 0.0, [], True
-    # Wired up once the movements schema is known (columns: date, mvt, value,
-    # material). Placeholder net-zero handling kept intentionally simple here.
-    return 0.0, [], False
+
+    now = as_of or date.today()
+    month_start = date(now.year, now.month, 1)
+    month_end = _month_end(now.year, now.month)
+    stmt = (
+        select(Movement.material_code, Movement.mvt, func.sum(Movement.value))
+        .where(
+            Movement.movement_date >= month_start,
+            Movement.movement_date <= month_end,
+            Movement.mvt.in_([_GR, _GR_REVERSAL, _RETURN_VENDOR]),
+        )
+        .group_by(Movement.material_code, Movement.mvt)
+    )
+    by_buyer: dict[str, float] = {}
+    total = 0.0
+    for code, mvt, val in db.execute(stmt).all():
+        if has_filter and code not in allowed:
+            continue
+        val = float(val or 0.0)
+        contrib = val if mvt == _GR else -val
+        total += contrib
+        b = buyer_of.get(code) or "Unassigned"
+        by_buyer[b] = by_buyer.get(b, 0.0) + contrib
+    donut = [
+        {"name": b, "value": safe_round(v)}
+        for b, v in sorted(by_buyer.items(), key=lambda kv: kv[1], reverse=True)
+    ]
+    return total, donut, False

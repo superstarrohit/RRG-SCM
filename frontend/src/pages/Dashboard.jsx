@@ -88,6 +88,7 @@ export default function Dashboard() {
 
   const k = data.kpis;
   const invByBuyer = (data.inventory_by_buyer || []).map((r) => ({ label: r.name || "Unassigned", value: r.value }));
+  const incomingByBuyer = (data.incoming_by_buyer || []).map((r) => ({ label: r.name || "Unassigned", value: r.value }));
 
   return (
     <div>
@@ -123,7 +124,13 @@ export default function Dashboard() {
       </Panel>
 
       <Panel title="Incoming Value by Buyer" hint={data.incoming_pending ? "awaiting movements data" : ""}>
-        <div className="empty">Upload a movements file to see incoming value by buyer.</div>
+        {incomingByBuyer.length
+          ? <VBars data={incomingByBuyer} valueFormat={axisM} color={PALETTE.blue} showValues />
+          : <div className="empty">
+              {data.incoming_pending
+                ? "Upload a movements file to see incoming value by buyer."
+                : "No incoming receipts this month."}
+            </div>}
       </Panel>
     </div>
   );

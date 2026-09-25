@@ -358,3 +358,81 @@ def test_incoming_timeseries_pending_until_movements_loaded(client):
     assert data["grain"] == "monthly"
     assert data["points"] == []
     assert data["pending"] is True
+
+
+def _movements_fixture():
+    return pd.DataFrame({
+        "movement_date": [
+            "2025-06-15", "2025-06-20", "2025-06-10",
+            "2025-05-31",  # previous month — excluded from "this month" KPI
+            "2025-07-01",  # next month — excluded; also not a receipts-type movement
+        ],
+        "rm_material_code": ["M1", "M1", "M2", "M1", "M2"],
+        "material_description": ["Part 1", "Part 1", "Part 2", "Part 1", "Part 2"],
+        "mvt": [101, 501, 101, 101, 201],
+        "mvt_description": [
+            "Goods Receipt - Purchase Order", "Return to Vendor", "Goods Receipt - Purchase Order",
+            "Goods Receipt - Purchase Order", "Issue to Production",
+        ],
+        "qty": [10, 2, 5, 99, 3],
+        "value": [1000, 200, 500, 9999, 300],
+        "from_location": ["LOC-WH01", "LOC-WH01", "LOC-WH01", "LOC-WH01", "LOC-PR01"],
+        "to_location": ["LOC-PR01", "LOC-WH01", "LOC-PR01", "LOC-PR01", "LOC-WH01"],
+        "document_no": ["DOC-1", "DOC-2", "DOC-3", "DOC-4", "DOC-5"],
+    })
+
+
+def test_movements_upload_and_analysis(client):
+    materials = pd.DataFrame(
+        {"Material": ["M1", "M2"], "Description": ["Part 1", "Part 2"],
+         "Buyer": ["Alice", "Bob"]}
+    )
+    assert _upload(client, "materials", materials).status_code == 200
+    assert _upload(client, "movements", _movements_fixture()).status_code == 200
+
+    r = client.get("/api/analytics/movements")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["empty"] is False
+    assert data["kpis"]["movements"] == 5
+    assert data["kpis"]["movement_types"] == 3
+    # Inflow = GR (101) only; outflow = return-to-vendor (501) + issue (201).
+    assert data["kpis"]["inflow_qty"] == 10 + 5 + 99  # all three 101 rows
+    assert data["kpis"]["outflow_qty"] == 2 + 3        # 501 + 201
+
+    by_type = {r["mvt_type"]: r for r in data["by_type"]}
+    assert by_type["Goods Receipt - Purchase Order"]["count"] == 3
+    assert by_type["Return to Vendor"]["value"] == 200.0
+
+    # Material/buyer slicer scopes the movements page too.
+    r = client.get("/api/analytics/movements", params={"buyer": "Alice"})
+    codes = {row["material_code"] for row in r.json()["recent"]}
+    assert codes == {"M1"}
+
+
+def test_overview_incoming_receipts_from_movements(client):
+    materials = pd.DataFrame(
+        {"Material": ["M1", "M2"], "Description": ["Part 1", "Part 2"],
+         "Buyer": ["Alice", "Bob"]}
+    )
+    assert _upload(client, "materials", materials).status_code == 200
+    assert _upload(client, "movements", _movements_fixture()).status_code == 200
+
+    # Pin "today" to inside June 2025 so the KPI's "this month" is deterministic.
+    r = client.get("/api/analytics/overview", params={"as_of": "2025-06-30"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["incoming_pending"] is False
+    # M1: GR 1000 - return 200 = 800; M2: GR 500. May/July rows are excluded.
+    assert data["kpis"]["incoming_receipts_value"] == 1300.0
+    by_buyer = {b["name"]: b["value"] for b in data["incoming_by_buyer"]}
+    assert by_buyer == {"Alice": 800.0, "Bob": 500.0}
+
+    # The trend counterpart aggregates the same way, bucketed by month.
+    r = client.get("/api/analytics/incoming-timeseries", params={"grain": "monthly"})
+    data = r.json()
+    assert data["pending"] is False
+    pts = {p["label"]: p["value"] for p in data["points"]}
+    assert pts["Jun 2025"] == 1300.0
+    assert pts["May 2025"] == 9999.0
+    assert "Jul 2025" not in pts  # issue-to-production isn't a receipts movement
