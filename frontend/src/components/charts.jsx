@@ -373,10 +373,29 @@ export function VBars({ data, valueFormat = (v) => v, height = 240, color = PALE
   const [wrapRef, measuredW] = useMeasuredWidth(560);
   if (!data.length) return <div className="empty">No data.</div>;
   const max = Math.max(1, ...data.map((d) => d.value || 0));
-  const minContentW = Math.max(360, data.length * 92);
-  const W = Math.max(measuredW, minContentW);
-  const padL = 44, padB = 34, padT = showValues ? 28 : 12;
+  // The y-axis's own left margin has the same problem as the bar labels
+  // below: a fixed width falls apart once valueFormat produces a long
+  // string (e.g. an un-abbreviated ₹ amount in the crores) — the tick text
+  // is right-anchored just inside it, so anything wider than the margin
+  // gets clipped off at its start by the SVG's own edge instead of just
+  // looking cramped.
+  const longestTickLabel = Math.max(valueFormat(max).length, valueFormat(0).length, 1);
+  const padL = Math.max(44, longestTickLabel * 6 + 16);
+  const padB = 34, padT = showValues ? 28 : 12;
   const chartH = height - padB - padT;
+  // Give each bar as much width as its own category label needs (mirrors
+  // DrillBars) — a flat per-bar width falls apart the moment a label is a
+  // real phrase rather than a short code, e.g. movement types ("Goods
+  // Receipt - Purchase Order"), which would otherwise overlap their
+  // neighbors into unreadable text.
+  const longestLabel = Math.max(...data.map((d) => (d.label || "").length), 1);
+  const estLabelW = longestLabel * 6 + 14;
+  const estValueLabelW = showValues
+    ? Math.max(...data.map((d) => valueFormat(d.value || 0).length), 1) * 6.4 + 10
+    : 0;
+  const requiredGap = Math.max(estLabelW, estValueLabelW, 68);
+  const minContentW = Math.max(360, data.length * requiredGap);
+  const W = Math.max(measuredW, minContentW);
   const bw = Math.min(46, (W - padL) / data.length - 22);
   const gap = (W - padL) / data.length;
   const ticks = 4;
