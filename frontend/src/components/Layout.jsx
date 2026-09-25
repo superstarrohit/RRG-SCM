@@ -48,6 +48,9 @@ export default function Layout({ children }) {
 
   return (
     <div className="app">
+      <div style={{ background: "#ffe600", color: "#000", textAlign: "center", fontWeight: 800, fontSize: 14, padding: "6px 0", letterSpacing: 1 }}>
+        DEBUG MARKER — LIVE BUILD CHECK — if you can read this, your preview is reaching the latest code
+      </div>
       <header className="topbar">
         <div className="brand">
           <div className="mark"><Icon name="cube" /></div>
