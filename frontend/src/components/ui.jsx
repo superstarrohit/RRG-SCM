@@ -132,12 +132,69 @@ const NUM_FILTER = /^(>=|<=|>|<|=)?\s*(-?\d+(?:\.\d+)?)\s*$/;
 // rather than replacing server-side filtering. Reuses the charts' own
 // horizontal-scroll slider so a table with many columns stays as easy to
 // pan across as a wide chart.
-export function SortableTable({ columns, rows }) {
+// localStorage-backed table layout: sort, per-column filters and any
+// manually-resized column widths, so a table looks the way you left it next
+// time you open the page instead of resetting every reload.
+function loadTableLayout(storageKey) {
+  try {
+    return JSON.parse(localStorage.getItem(`table-layout:${storageKey}`) || "{}");
+  } catch {
+    return {};
+  }
+}
+function saveTableLayout(storageKey, layout) {
+  try {
+    localStorage.setItem(`table-layout:${storageKey}`, JSON.stringify(layout));
+  } catch { /* ignore (private browsing, storage full, ...) */ }
+}
+
+export function SortableTable({ columns, rows, storageKey = "default" }) {
   const safeRows = rows || [];
-  const [sort, setSort] = React.useState({ key: null, dir: 1 });
-  const [filters, setFilters] = React.useState({});
+  const initial = React.useMemo(() => loadTableLayout(storageKey), [storageKey]);
+  const [sort, setSort] = React.useState(initial.sort || { key: null, dir: 1 });
+  const [filters, setFilters] = React.useState(initial.filters || {});
+  // Empty until the user drags a column border for the first time — see
+  // beginResize, which then snapshots every column's current rendered width
+  // so the rest of the table doesn't jump when it switches to a fixed
+  // layout. Restored from localStorage if this table was resized before.
+  const [colWidths, setColWidths] = React.useState(initial.colWidths || {});
+  React.useEffect(() => {
+    saveTableLayout(storageKey, { sort, filters, colWidths });
+  }, [storageKey, sort, filters, colWidths]);
+
   const wrapRef = React.useRef(null);
   const headRowRef = React.useRef(null);
+  const hasCustomWidths = Object.keys(colWidths).length > 0;
+
+  // Drag-to-resize a column border. The first resize of this table snapshots
+  // every column's current auto-computed width so switching to a fixed
+  // table-layout (needed for the width to stick and for cell text to wrap
+  // instead of forcing the column wider) doesn't visibly reflow the table.
+  const beginResize = (colKey, e) => {
+    e.preventDefault();
+    e.stopPropagation(); // don't also trigger the header's sort click
+    let widths = colWidths;
+    if (!hasCustomWidths && headRowRef.current) {
+      widths = {};
+      const cells = headRowRef.current.children;
+      columns.forEach((c, i) => {
+        widths[c.key] = Math.round(cells[i]?.getBoundingClientRect().width || 120);
+      });
+      setColWidths(widths);
+    }
+    const startWidth = widths[colKey] || 120;
+    const startX = e.clientX;
+    const onMove = (ev) => {
+      const next = Math.max(60, Math.round(startWidth + (ev.clientX - startX)));
+      setColWidths((prev) => ({ ...prev, [colKey]: next }));
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  };
   // The filter row sticks right below the sort-header row, so it needs that
   // row's real rendered height as its own `top` offset — measured rather
   // than hardcoded, since row height depends on font size/theme/zoom.
@@ -204,18 +261,32 @@ export function SortableTable({ columns, rows }) {
     <div>
       <div className="table-toolbar">
         <span className="muted">{fmtNum(sorted.length)} of {fmtNum(safeRows.length)} rows</span>
-        {activeFilters.length > 0 && (
-          <button className="table-clear-filters" onClick={() => setFilters({})}>
-            Clear {activeFilters.length} filter{activeFilters.length > 1 ? "s" : ""}
-          </button>
-        )}
+        <span style={{ display: "flex", gap: 12 }}>
+          {hasCustomWidths && (
+            <button className="table-clear-filters" onClick={() => setColWidths({})}>
+              Reset column widths
+            </button>
+          )}
+          {activeFilters.length > 0 && (
+            <button className="table-clear-filters" onClick={() => setFilters({})}>
+              Clear {activeFilters.length} filter{activeFilters.length > 1 ? "s" : ""}
+            </button>
+          )}
+        </span>
       </div>
       {/* Above the table, not below — with up to 1,000 rows the table can run
           tens of thousands of pixels tall, so a slider placed after it (like
           a chart's) would be practically unreachable. */}
       <HScrollSlider scrollRef={wrapRef} />
       <div className="table-wrap table-wrap-scroll" ref={wrapRef}>
-        <table>
+        <table style={hasCustomWidths ? { tableLayout: "fixed" } : undefined}>
+          {hasCustomWidths && (
+            <colgroup>
+              {columns.map((c) => (
+                <col key={c.key} style={{ width: `${colWidths[c.key] || 120}px` }} />
+              ))}
+            </colgroup>
+          )}
           <thead>
             <tr ref={headRowRef}>
               {columns.map((c) => (
@@ -224,6 +295,12 @@ export function SortableTable({ columns, rows }) {
                   <span className={`sort-ind${sort.key === c.key ? " active" : ""}`}>
                     {sort.key === c.key ? (sort.dir === 1 ? "▲" : "▼") : "↕"}
                   </span>
+                  <span
+                    className="col-resizer"
+                    onMouseDown={(e) => beginResize(c.key, e)}
+                    onClick={(e) => e.stopPropagation()}
+                    title="Drag to resize column"
+                  />
                 </th>
               ))}
             </tr>
@@ -253,7 +330,7 @@ export function SortableTable({ columns, rows }) {
             ) : sorted.map((r, i) => (
               <tr key={i}>
                 {columns.map((c) => (
-                  <td key={c.key} className={c.num ? "num" : ""}>
+                  <td key={c.key} className={`${c.num ? "num" : ""}${hasCustomWidths ? " wrap" : ""}`}>
                     {c.render ? c.render(r[c.key], r) : (r[c.key] ?? "—")}
                   </td>
                 ))}

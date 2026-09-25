@@ -73,9 +73,17 @@ function StockDateFilter({ value, onChange }) {
   );
 }
 
+const STOCK_DATE_KEY = "material-planning:stock-date";
+
 export default function Planning() {
   const f = useFilters();
-  const [stockDate, setStockDate] = React.useState("");
+  const [stockDate, setStockDateState] = React.useState(
+    () => { try { return localStorage.getItem(STOCK_DATE_KEY) || ""; } catch { return ""; } },
+  );
+  const setStockDate = (v) => {
+    setStockDateState(v);
+    try { v ? localStorage.setItem(STOCK_DATE_KEY, v) : localStorage.removeItem(STOCK_DATE_KEY); } catch { /* ignore */ }
+  };
   const { loading, data, error } = useApi(
     () => api.planning({ ...f.params, stock_date: stockDate || undefined }),
     [f.key, stockDate],
@@ -97,7 +105,7 @@ export default function Planning() {
     <div>
       {head}
       <Panel title="Material Plan">
-        <SortableTable columns={planCols} rows={data.rows} />
+        <SortableTable columns={planCols} rows={data.rows} storageKey="material-planning" />
       </Panel>
     </div>
   );
