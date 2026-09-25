@@ -6,8 +6,13 @@ import {
 import { DrillBars, VBars, PALETTE } from "../components/charts.jsx";
 import { useFilters } from "../components/filters.jsx";
 
-// Ribbon values are large ₹ amounts — label the axis in ₹ millions.
-const axisM = (v) => "₹" + Number(v / 1e6).toLocaleString("en-IN", { maximumFractionDigits: 0 }) + "M";
+// Ribbon values are large ₹ amounts — label the axis in ₹ millions. Rounding
+// to whole millions made distinct buyer/supplier totals in the ₹0.3M-1.5M
+// range all display as the same "₹1M", so allow one decimal (trimmed when
+// the value doesn't need it) to keep close-but-different bars distinguishable.
+const axisM = (v) => "₹" + Number(v / 1e6).toLocaleString("en-IN", { maximumFractionDigits: 1 }) + "M";
+// Quantity trends have no currency and a much smaller scale — a plain count.
+const axisQty = (v) => Number(v).toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
 // Power BI–style hierarchy: each level drills into the next.
 const HIER = ["yearly", "quarterly", "monthly", "daily"];
@@ -19,7 +24,7 @@ const LEVEL_NAME = { yearly: "Year", quarterly: "Quarter", monthly: "Month", dai
 // `apiFn` fetches {points, pending?} for the current level; `emptyMessage`
 // covers both "no data in this window" and (via `pending`) "not wired up
 // yet" cases — e.g. incoming receipts before a movements file is loaded.
-function TrendDrilldown({ f, title, apiFn, color, emptyMessage, hint }) {
+function TrendDrilldown({ f, title, apiFn, color, emptyMessage, hint, valueFormat = axisM }) {
   // Each frame scopes one level to a parent period's date window.
   const [stack, setStack] = React.useState([{ level: "yearly", label: "All" }]);
   const cur = stack[stack.length - 1];
@@ -74,11 +79,15 @@ function TrendDrilldown({ f, title, apiFn, color, emptyMessage, hint }) {
           ? <div className="empty">Loading trend…</div>
           : !points.length
             ? <div className="empty">{emptyMessage}</div>
-            : <DrillBars data={points} valueFormat={axisM} color={color}
+            : <DrillBars data={points} valueFormat={valueFormat} color={color}
                          onBar={drillInto} clickable={!!nextLevel} />}
     </Panel>
   );
 }
+
+// Quantity counterparts of the value timeseries — same endpoints, metric=qty.
+const inventoryQtyTimeseries = (p) => api.inventoryTimeseries({ ...p, metric: "qty" });
+const incomingQtyTimeseries = (p) => api.incomingTimeseries({ ...p, metric: "qty" });
 
 export default function Dashboard() {
   const f = useFilters();
@@ -89,6 +98,7 @@ export default function Dashboard() {
   const k = data.kpis;
   const invByBuyer = (data.inventory_by_buyer || []).map((r) => ({ label: r.name || "Unassigned", value: r.value }));
   const incomingByBuyer = (data.incoming_by_buyer || []).map((r) => ({ label: r.name || "Unassigned", value: r.value }));
+  const incomingBySupplier = (data.incoming_by_supplier || []).map((r) => ({ label: r.name || "Unassigned", value: r.value }));
 
   return (
     <div>
@@ -116,6 +126,15 @@ export default function Dashboard() {
                       color={PALETTE.blue} hint="awaiting movements upload"
                       emptyMessage="Upload a movements file to see incoming receipts over time." />
 
+      {/* Quantity counterparts — kept as separate single-axis charts rather
+          than a second scale on the value trends above. */}
+      <TrendDrilldown f={f} title="Stock Quantity Trend" apiFn={inventoryQtyTimeseries}
+                      color={PALETTE.cyan} valueFormat={axisQty}
+                      emptyMessage="No inventory history in this period." />
+      <TrendDrilldown f={f} title="Receipts Quantity Trend" apiFn={incomingQtyTimeseries}
+                      color={PALETTE.blue} valueFormat={axisQty} hint="awaiting movements upload"
+                      emptyMessage="Upload a movements file to see incoming receipts over time." />
+
       {/* Latest (as-on-today) inventory value per buyer — buyers on X. */}
       <Panel title="Latest Inventory Value by Buyer">
         {invByBuyer.length
@@ -129,6 +148,16 @@ export default function Dashboard() {
           : <div className="empty">
               {data.incoming_pending
                 ? "Upload a movements file to see incoming value by buyer."
+                : "No incoming receipts this month."}
+            </div>}
+      </Panel>
+
+      <Panel title="Incoming Value by Supplier" hint={data.incoming_pending ? "awaiting movements data" : ""}>
+        {incomingBySupplier.length
+          ? <VBars data={incomingBySupplier} valueFormat={axisM} color={PALETTE.purple} showValues />
+          : <div className="empty">
+              {data.incoming_pending
+                ? "Upload a movements file to see incoming value by supplier."
                 : "No incoming receipts this month."}
             </div>}
       </Panel>

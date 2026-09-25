@@ -57,23 +57,25 @@ def get_overview(as_of: str | None = Query(None),
 @router.get("/inventory-timeseries")
 def get_inventory_timeseries(
     grain: str = Query("monthly", pattern="^(daily|weekly|monthly|quarterly|yearly)$"),
+    metric: str = Query("value", pattern="^(value|qty)$"),
     start: str | None = Query(None),
     end: str | None = Query(None),
     f: dict = Depends(_slicers),
     db: Session = Depends(get_db),
 ) -> dict:
-    return overview.inventory_timeseries(db, grain=grain, start=start, end=end, **f)
+    return overview.inventory_timeseries(db, grain=grain, metric=metric, start=start, end=end, **f)
 
 
 @router.get("/incoming-timeseries")
 def get_incoming_timeseries(
     grain: str = Query("monthly", pattern="^(daily|weekly|monthly|quarterly|yearly)$"),
+    metric: str = Query("value", pattern="^(value|qty)$"),
     start: str | None = Query(None),
     end: str | None = Query(None),
     f: dict = Depends(_slicers),
     db: Session = Depends(get_db),
 ) -> dict:
-    return overview.incoming_timeseries(db, grain=grain, start=start, end=end, **f)
+    return overview.incoming_timeseries(db, grain=grain, metric=metric, start=start, end=end, **f)
 
 
 @router.get("/inventory-ribbon")

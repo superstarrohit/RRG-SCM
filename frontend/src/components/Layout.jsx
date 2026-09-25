@@ -8,8 +8,6 @@ const TABS = [
   { to: "/", label: "Dashboard", icon: "dashboard", end: true },
   { to: "/incoming", label: "Incoming", icon: "truck" },
   { to: "/planning", label: "Material Planning", icon: "box" },
-  { to: "/sourcing", label: "Sourcing", icon: "handshake" },
-  { to: "/costing", label: "Costing", icon: "dollar" },
   { to: "/fg-planning", label: "FG Planning", icon: "factory" },
   { to: "/stock-monitoring", label: "Stock", icon: "gauge" },
   { to: "/inventory-monitoring", label: "Inventory", icon: "trend" },

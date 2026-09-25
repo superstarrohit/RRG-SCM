@@ -67,8 +67,9 @@ def analyze(db: Session, *, as_of: date | None = None,
 
     # --- Incoming receipts value (this month) from goods movements: GR -
     # reversal of GR - return-to-vendor. ---
-    incoming_total, incoming_by_buyer, incoming_pending = _incoming_receipts(
-        db, allowed, buyer_of, has_filter, as_of)
+    supplier_of = _primary_supplier_of(db)
+    incoming_total, incoming_by_buyer, incoming_by_supplier, incoming_pending = _incoming_receipts(
+        db, allowed, buyer_of, supplier_of, has_filter, as_of)
 
     # Buyer-wise trends for the ribbon charts (last 12 months, bounded by the
     # date-range filter when one is active).
@@ -93,6 +94,7 @@ def analyze(db: Session, *, as_of: date | None = None,
         },
         "inventory_by_buyer": inv_by_buyer,
         "incoming_by_buyer": incoming_by_buyer,
+        "incoming_by_supplier": incoming_by_supplier,
         "inventory_ribbon": inventory_ribbon,
         "incoming_ribbon": {"months": [], "series": []},
         "incoming_pending": incoming_pending,
@@ -131,19 +133,22 @@ def _bucket(d: date, grain: str):
     return d.isoformat(), d.strftime("%d %b %Y"), d, d
 
 
-def inventory_timeseries(db: Session, *, grain: str = "monthly",
+def inventory_timeseries(db: Session, *, grain: str = "monthly", metric: str = "value",
                          start: str | None = None, end: str | None = None,
                          commodity: str | None = None, buyer: str | None = None,
                          material: str | None = None, supplier: str | None = None,
                          location: str | None = None, q: str | None = None) -> dict:
-    """Inventory value over time at daily / weekly / monthly / quarterly / yearly
-    granularity, scoped to the active slicers and an optional date window.
+    """Inventory value (or quantity) over time at daily / weekly / monthly /
+    quarterly / yearly granularity, scoped to the active slicers and an
+    optional date window.
 
     Inventory is a stock, so each period is represented by its *last* daily
     snapshot (period-end inventory), not a sum across the period. `start`/`end`
     bound the window — used to drill a parent period into its child periods.
     """
     grain = grain if grain in {"daily", "weekly", "monthly", "quarterly", "yearly"} else "monthly"
+    metric = metric if metric in {"value", "qty"} else "value"
+    col = InventorySnapshot.value if metric == "value" else InventorySnapshot.qty
     materials = materials_df(db)
     codes = allowed_codes(materials, commodity, buyer, material)
     codes = _apply_supplier(db, codes, supplier)
@@ -154,7 +159,7 @@ def inventory_timeseries(db: Session, *, grain: str = "monthly",
     has_filter = codes is not None or bool(q)
     allowed = set(fmats["material_code"]) if not fmats.empty else set()
 
-    stmt = select(InventorySnapshot.snapshot_date, func.sum(InventorySnapshot.value))
+    stmt = select(InventorySnapshot.snapshot_date, func.sum(col))
     if location:
         stmt = stmt.where(InventorySnapshot.location == location)
     if start:
@@ -182,22 +187,24 @@ def inventory_timeseries(db: Session, *, grain: str = "monthly",
     return {"grain": grain, "points": points}
 
 
-def incoming_timeseries(db: Session, *, grain: str = "monthly",
+def incoming_timeseries(db: Session, *, grain: str = "monthly", metric: str = "value",
                         start: str | None = None, end: str | None = None,
                         commodity: str | None = None, buyer: str | None = None,
                         material: str | None = None, supplier: str | None = None,
                         location: str | None = None, q: str | None = None) -> dict:
-    """Incoming receipts value over time — the trend counterpart of
-    ``inventory_timeseries``, drillable the same way (Year → Quarter → Month
-    → Day). Each period is a *sum* of that period's net receipts (GR minus
-    reversals-of-GR minus returns-to-vendor), unlike inventory's period-end
-    snapshot, since receipts are a flow rather than a stock.
+    """Incoming receipts value (or quantity) over time — the trend counterpart
+    of ``inventory_timeseries``, drillable the same way (Year → Quarter →
+    Month → Day). Each period is a *sum* of that period's net receipts (GR
+    minus reversals-of-GR minus returns-to-vendor), unlike inventory's
+    period-end snapshot, since receipts are a flow rather than a stock.
 
     Returns an empty, pending series until the movements dump is loaded —
     the Dashboard shows an "awaiting movements upload" empty state for it.
     """
     from app.analytics.common import _MODEL_BY_NAME
     grain = grain if grain in {"daily", "weekly", "monthly", "quarterly", "yearly"} else "monthly"
+    metric = metric if metric in {"value", "qty"} else "value"
+    col = Movement.value if metric == "value" else Movement.qty
     if "movements" not in _MODEL_BY_NAME:
         return {"grain": grain, "points": [], "pending": True}
     if db.execute(select(func.count()).select_from(Movement)).scalar() == 0:
@@ -213,7 +220,7 @@ def incoming_timeseries(db: Session, *, grain: str = "monthly",
     has_filter = codes is not None or bool(q)
     allowed = set(fmats["material_code"]) if not fmats.empty else set()
 
-    stmt = select(Movement.movement_date, Movement.mvt, Movement.material_code, Movement.value).where(
+    stmt = select(Movement.movement_date, Movement.mvt, Movement.material_code, col).where(
         Movement.mvt.in_([_GR, _GR_REVERSAL, _RETURN_VENDOR])
     )
     if start:
@@ -380,18 +387,40 @@ def _inventory_today(db, allowed: set, buyer_of: dict, location, has_filter: boo
 _GR, _GR_REVERSAL, _RETURN_VENDOR = "101", "102", "501"
 
 
-def _incoming_receipts(db, allowed: set, buyer_of: dict, has_filter: bool, as_of):
-    """Net incoming receipts value for the current month, by buyer.
+def _primary_supplier_of(db: Session) -> dict:
+    """material_code -> its highest-share vendor's name (from the SOB master).
+
+    SOB master is many-to-many (a material can be split across several
+    vendors), so this picks each material's single largest-share source as
+    its "primary supplier" — mirroring the 1:1 buyer_of dict built from the
+    material master's own buyer column.
+    """
+    rows = db.execute(
+        select(SOBMaster.material, SOBMaster.vendor_name, SOBMaster.vendor_code, SOBMaster.share)
+        .where(SOBMaster.material.isnot(None))
+    ).all()
+    best: dict[str, tuple[float, str]] = {}
+    for material, vendor_name, vendor_code, share in rows:
+        name = vendor_name or vendor_code or "Unassigned"
+        share = float(share or 0.0)
+        if material not in best or share > best[material][0]:
+            best[material] = (share, name)
+    return {m: name for m, (_, name) in best.items()}
+
+
+def _incoming_receipts(db, allowed: set, buyer_of: dict, supplier_of: dict, has_filter: bool, as_of):
+    """Net incoming receipts value for the current month, by buyer and by
+    (primary) supplier.
 
     GR minus reversals-of-GR minus returns-to-vendor. Sourced from the
-    movements transactions table; returns (0, [], pending=True) until one is
-    loaded.
+    movements transactions table; returns (0, [], [], pending=True) until one
+    is loaded.
     """
     from app.analytics.common import _MODEL_BY_NAME
     if "movements" not in _MODEL_BY_NAME:
-        return 0.0, [], True
+        return 0.0, [], [], True
     if db.execute(select(func.count()).select_from(Movement)).scalar() == 0:
-        return 0.0, [], True
+        return 0.0, [], [], True
 
     now = as_of or date.today()
     month_start = date(now.year, now.month, 1)
@@ -406,6 +435,7 @@ def _incoming_receipts(db, allowed: set, buyer_of: dict, has_filter: bool, as_of
         .group_by(Movement.material_code, Movement.mvt)
     )
     by_buyer: dict[str, float] = {}
+    by_supplier: dict[str, float] = {}
     total = 0.0
     for code, mvt, val in db.execute(stmt).all():
         if has_filter and code not in allowed:
@@ -415,8 +445,23 @@ def _incoming_receipts(db, allowed: set, buyer_of: dict, has_filter: bool, as_of
         total += contrib
         b = buyer_of.get(code) or "Unassigned"
         by_buyer[b] = by_buyer.get(b, 0.0) + contrib
-    donut = [
+        s = supplier_of.get(code) or "Unassigned"
+        by_supplier[s] = by_supplier.get(s, 0.0) + contrib
+    donut_buyer = [
         {"name": b, "value": safe_round(v)}
         for b, v in sorted(by_buyer.items(), key=lambda kv: kv[1], reverse=True)
     ]
-    return total, donut, False
+    donut_supplier = _top_n_with_other(by_supplier, 12)
+    return total, donut_buyer, donut_supplier, False
+
+
+def _top_n_with_other(values: dict, n: int) -> list[dict]:
+    """Sort a {name: value} map descending, keep the top n and fold the rest
+    into a single "Other" bucket — the supplier list can run into the dozens,
+    which makes a one-bar-per-entity chart unreadable past a handful."""
+    ranked = sorted(values.items(), key=lambda kv: kv[1], reverse=True)
+    head, tail = ranked[:n], ranked[n:]
+    out = [{"name": name, "value": safe_round(v)} for name, v in head]
+    if tail:
+        out.append({"name": "Other", "value": safe_round(sum(v for _, v in tail))})
+    return out

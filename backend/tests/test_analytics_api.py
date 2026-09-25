@@ -436,3 +436,58 @@ def test_overview_incoming_receipts_from_movements(client):
     assert pts["Jun 2025"] == 1300.0
     assert pts["May 2025"] == 9999.0
     assert "Jul 2025" not in pts  # issue-to-production isn't a receipts movement
+
+
+def test_incoming_timeseries_qty_metric(client):
+    materials = pd.DataFrame(
+        {"Material": ["M1", "M2"], "Description": ["Part 1", "Part 2"],
+         "Buyer": ["Alice", "Bob"]}
+    )
+    assert _upload(client, "materials", materials).status_code == 200
+    assert _upload(client, "movements", _movements_fixture()).status_code == 200
+
+    # metric=qty sums qty instead of value, with the same GR/reversal/return sign.
+    # Jun 2025: M1 GR qty 10 - return qty 2 = 8; M2 GR qty 5 -> total 13.
+    r = client.get("/api/analytics/incoming-timeseries", params={"grain": "monthly", "metric": "qty"})
+    data = r.json()
+    pts = {p["label"]: p["value"] for p in data["points"]}
+    assert pts["Jun 2025"] == 8 + 5
+    assert pts["May 2025"] == 99.0
+
+
+def test_inventory_timeseries_qty_metric(client):
+    materials = pd.DataFrame(
+        {"Material": ["M1", "M2"], "Description": ["Part 1", "Part 2"], "Buyer": ["Alice", "Bob"]}
+    )
+    assert _upload(client, "materials", materials).status_code == 200
+    snaps = pd.DataFrame(
+        {"Material": ["M1", "M2"], "Date": ["2025-01-31", "2025-01-31"],
+         "On Hand": [10, 20], "Inventory Value": [500, 900]}
+    )
+    assert _upload(client, "inventory_snapshots", snaps).status_code == 200
+
+    r = client.get("/api/analytics/inventory-timeseries", params={"grain": "monthly", "metric": "qty"})
+    data = r.json()
+    pts = {p["label"]: p["value"] for p in data["points"]}
+    assert pts["Jan 2025"] == 30.0  # qty (10+20), not value (500+900)
+
+
+def test_overview_incoming_by_supplier(client):
+    materials = pd.DataFrame(
+        {"Material": ["M1", "M2"], "Description": ["Part 1", "Part 2"],
+         "Buyer": ["Alice", "Bob"]}
+    )
+    assert _upload(client, "materials", materials).status_code == 200
+    assert _upload(client, "movements", _movements_fixture()).status_code == 200
+
+    sob = pd.DataFrame(
+        {"vendor_code": ["V1", "V2"], "vendor_name": ["Acme Ltd", "Globex"],
+         "material": ["M1", "M2"], "share": [100, 100]}
+    )
+    assert _upload(client, "sob_master", sob).status_code == 200
+
+    r = client.get("/api/analytics/overview", params={"as_of": "2025-06-30"})
+    data = r.json()
+    by_supplier = {s["name"]: s["value"] for s in data["incoming_by_supplier"]}
+    # Same net receipts as by-buyer, attributed via each material's SOB vendor.
+    assert by_supplier == {"Acme Ltd": 800.0, "Globex": 500.0}
