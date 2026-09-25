@@ -448,6 +448,13 @@ export function DrillBars({ data, valueFormat = (v) => v, height = 300, color = 
   const ticks = 4;
   const gid = React.useId();
   const many = data.length > 16;
+  // A value label's pixel width depends on the formatted text, which varies
+  // by chart (currency vs plain counts) — so the number of labels that can
+  // fit without overlapping is computed from the actual longest label rather
+  // than a fixed bar-count cutoff, and thins out as columns get narrower.
+  const longestValueLabel = Math.max(...data.map((d) => valueFormat(d.value || 0).length), 1);
+  const estValueLabelW = longestValueLabel * 6.4 + 10;
+  const valueStep = Math.max(1, Math.ceil(estValueLabelW / gap));
   return (
     <div>
     <div className="chart table-wrap" ref={wrapRef}>
@@ -480,6 +487,7 @@ export function DrillBars({ data, valueFormat = (v) => v, height = 300, color = 
           const y = padT + chartH - h;
           const step = Math.max(1, Math.ceil(data.length / 16));
           const showLabel = !many || i % step === 0 || i === data.length - 1;
+          const showValue = i % valueStep === 0 || i === data.length - 1;
           return (
             <g key={i} onClick={onBar ? () => onBar(d) : undefined}
                style={{ cursor: clickable && onBar ? "pointer" : "default" }}>
@@ -487,8 +495,10 @@ export function DrillBars({ data, valueFormat = (v) => v, height = 300, color = 
               <rect x={padL + gap * i} y={padT} width={gap} height={chartH} fill="transparent" />
               <rect x={x} y={y} width={Math.max(bw, 2)} height={Math.max(h, 1)} rx="6"
                     fill={`url(#db-${gid})`} filter={`url(#dbg-${gid})`} />
-              <text x={x + bw / 2} y={y - 6} textAnchor="middle" fontSize="10.5"
-                    fontWeight="700" fill="var(--text)">{valueFormat(d.value)}</text>
+              {showValue && (
+                <text x={x + bw / 2} y={y - 6} textAnchor="middle" fontSize="10.5"
+                      fontWeight="700" fill="var(--text)">{valueFormat(d.value)}</text>
+              )}
               {showLabel && (
                 <text x={padL + gap * i + gap / 2} y={height - padB + 16} textAnchor="middle"
                       fontSize="10.5" fill="var(--text-dim)">{d.label}</text>

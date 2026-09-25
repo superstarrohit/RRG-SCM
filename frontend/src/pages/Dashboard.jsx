@@ -14,63 +14,50 @@ const axisM = (v) => "₹" + Number(v / 1e6).toLocaleString("en-IN", { maximumFr
 // Quantity trends have no currency and a much smaller scale — a plain count.
 const axisQty = (v) => Number(v).toLocaleString("en-IN", { maximumFractionDigits: 0 });
 
-// Power BI–style hierarchy: each level drills into the next.
+// Power BI–style hierarchy: each level shows every period at that granularity.
 const HIER = ["yearly", "quarterly", "monthly", "daily"];
 const LEVEL_NAME = { yearly: "Year", quarterly: "Quarter", monthly: "Month", daily: "Day" };
 
-// Value over time with a Power BI-style click-to-drill hierarchy (Year →
-// Quarter → Month → Day). Clicking a bar drills into that period; the
-// breadcrumb and ▲ button drill back up. Respects the global slicers.
-// `apiFn` fetches {points, pending?} for the current level; `emptyMessage`
-// covers both "no data in this window" and (via `pending`) "not wired up
-// yet" cases — e.g. incoming receipts before a movements file is loaded.
+// Value over time with a granularity switcher (Year / Quarter / Month / Day).
+// Unlike a Power BI-style "drill into this one bar" hierarchy — which narrows
+// the chart down to a single branch and hides every other period — clicking
+// a bar (or a level tab) re-renders the WHOLE chart at the next granularity,
+// so every period at that level stays visible at once. Respects the global
+// slicers. `apiFn` fetches {points, pending?} for the current level;
+// `emptyMessage` covers both "no data in this window" and (via `pending`)
+// "not wired up yet" cases — e.g. incoming receipts before a movements file
+// is loaded.
 function TrendDrilldown({ f, title, apiFn, color, emptyMessage, hint, valueFormat = axisM }) {
-  // Each frame scopes one level to a parent period's date window.
-  const [stack, setStack] = React.useState([{ level: "yearly", label: "All" }]);
-  const cur = stack[stack.length - 1];
-  const nextLevel = HIER[HIER.indexOf(cur.level) + 1] || null;
+  const [grain, setGrain] = React.useState("yearly");
+  const grainIdx = HIER.indexOf(grain);
+  const nextLevel = HIER[grainIdx + 1] || null;
 
-  // Reset the drill path whenever the global filters change.
-  React.useEffect(() => { setStack([{ level: "yearly", label: "All" }]); }, [f.key]);
+  // Reset to the coarsest level whenever the global filters change.
+  React.useEffect(() => { setGrain("yearly"); }, [f.key]);
 
-  // Drilling into a period pins the request to its exact calendar bounds;
-  // at the top ("All") frame there's nothing to pin, so the global date-range
-  // filter (already in f.params) is left to take effect on its own — setting
-  // start/end here to undefined would instead erase it.
   const { loading, data, error } = useApi(
-    () => apiFn({
-      ...f.params, grain: cur.level,
-      ...(cur.start ? { start: cur.start, end: cur.end } : {}),
-    }),
-    [f.key, cur.level, cur.start, cur.end],
+    () => apiFn({ ...f.params, grain }),
+    [f.key, grain],
   );
   const points = data?.points || [];
   const pending = !!data?.pending;
 
-  const drillInto = (p) => {
-    if (!nextLevel) return;
-    setStack((s) => [...s, { level: nextLevel, start: p.start, end: p.end, label: p.label }]);
-  };
-  const jumpTo = (i) => setStack((s) => s.slice(0, i + 1));
-  const drillUp = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
+  const drillDown = () => { if (nextLevel) setGrain(nextLevel); };
 
   return (
     <Panel title={title} hint={pending ? (hint || "") : ""}>
       <div className="drill-bar">
-        <button className="drill-up" onClick={drillUp} disabled={stack.length === 1}
-                title="Drill up" aria-label="Drill up">▲</button>
-        <nav className="crumbs" aria-label="Drilldown path">
-          {stack.map((fr, i) => (
-            <React.Fragment key={i}>
+        <nav className="crumbs" aria-label="Granularity">
+          {HIER.map((lvl, i) => (
+            <React.Fragment key={lvl}>
               {i > 0 && <span className="crumb-sep">›</span>}
-              <button className={`crumb${i === stack.length - 1 ? " active" : ""}`}
-                      onClick={() => jumpTo(i)}>{fr.label}</button>
+              <button className={`crumb${lvl === grain ? " active" : ""}`}
+                      onClick={() => setGrain(lvl)}>{LEVEL_NAME[lvl]}</button>
             </React.Fragment>
           ))}
         </nav>
         <span className="drill-level">
-          by {LEVEL_NAME[cur.level]}
-          {nextLevel && <span className="drill-hint"> · click a bar to drill into {LEVEL_NAME[nextLevel].toLowerCase()}s</span>}
+          {nextLevel && <span className="drill-hint"> · click a bar (or a level above) to see every {LEVEL_NAME[nextLevel].toLowerCase()}</span>}
         </span>
       </div>
       {error
@@ -80,7 +67,7 @@ function TrendDrilldown({ f, title, apiFn, color, emptyMessage, hint, valueForma
           : !points.length
             ? <div className="empty">{emptyMessage}</div>
             : <DrillBars data={points} valueFormat={valueFormat} color={color}
-                         onBar={drillInto} clickable={!!nextLevel} />}
+                         onBar={drillDown} clickable={!!nextLevel} />}
     </Panel>
   );
 }
