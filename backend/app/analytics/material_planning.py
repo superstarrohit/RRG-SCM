@@ -28,7 +28,7 @@ from app.analytics.common import (
     safe_round,
     supplier_material_codes,
 )
-from app.models import Movement
+from app.models import Movement, SOBMaster
 
 WORKING_DAYS_PER_MONTH = 20
 # Goods-movement types that make up "incoming receipts" (mirrors overview.py):
@@ -87,6 +87,26 @@ def _receipts_qty_by_material(db: Session, stock_date: str | None) -> dict:
     return receipts
 
 
+def _vendors_by_material(db: Session) -> dict:
+    """material_code -> "Vendor A, Vendor B" listing every vendor the SOB
+    master sources it from, highest sourcing share first (a material is
+    often split across more than one vendor, unlike the 1:1 buyer column on
+    the material master).
+    """
+    rows = db.execute(
+        select(SOBMaster.material, SOBMaster.vendor_name, SOBMaster.vendor_code, SOBMaster.share)
+        .where(SOBMaster.material.isnot(None))
+        .order_by(SOBMaster.material, SOBMaster.share.desc())
+    ).all()
+    vendors: dict[str, list[str]] = {}
+    for material, vendor_name, vendor_code, _share in rows:
+        name = vendor_name or vendor_code or "Unassigned"
+        vendors.setdefault(material, [])
+        if name not in vendors[material]:
+            vendors[material].append(name)
+    return {m: ", ".join(names) for m, names in vendors.items()}
+
+
 def analyze(db: Session, *, as_of: date | None = None, stock_date: str | None = None,
             commodity: str | None = None, buyer: str | None = None,
             material: str | None = None, supplier: str | None = None,
@@ -125,6 +145,7 @@ def analyze(db: Session, *, as_of: date | None = None, stock_date: str | None = 
     base["warehouse_stock"] = base["material_code"].map(qty_by_material(wh)).fillna(0.0)
 
     base["receipts"] = base["material_code"].map(_receipts_qty_by_material(db, stock_date)).fillna(0.0)
+    base["vendor"] = base["material_code"].map(_vendors_by_material(db)).fillna("")
 
     pos = filter_supplier(filter_codes(latest_open_pos(db, as_of=stock_date), codes), supplier)
     if not pos.empty:
@@ -171,7 +192,10 @@ def analyze(db: Session, *, as_of: date | None = None, stock_date: str | None = 
         row = {
             "material_code": r["material_code"],
             "description": r.get("description"),
+            "vendor": r.get("vendor") or None,
             "safety_stock": safe_round(r["safety_stock"]),
+            "refill_level": safe_round(r["refill_level"]),
+            "max_level": safe_round(r["max_level"]),
             "current_stock": safe_round(r["current_stock"]),
             "warehouse_stock": safe_round(r["warehouse_stock"]),
             "receipts": safe_round(r["receipts"]),

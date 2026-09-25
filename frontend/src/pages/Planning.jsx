@@ -8,9 +8,17 @@ import { useFilters } from "../components/filters.jsx";
 
 const STATUS_OPTIONS = ["Stockout", "Risk", "Alarm", "Safe", "Excess"];
 
+// Any negative figure in this report (a shortfall, a net outflow of
+// receipts for the month, ...) is worth flagging the same way regardless
+// of which column it's in.
+const numCell = (v) => (
+  <span style={{ color: v < 0 ? "var(--red)" : "inherit" }}>{fmtNum(v)}</span>
+);
+
 // Forecast is the net requirement to procure that month to still hold
 // safety stock — a positive value means action is needed, so flag it in
-// red rather than the usual neutral number color.
+// red rather than the usual neutral number color (it's clipped at 0, so
+// never negative — no conflict with numCell's rule).
 const forecastCell = (v) => (
   <span style={{ color: v > 0 ? "var(--red)" : "inherit" }}>{fmtNum(v)}</span>
 );
@@ -18,28 +26,29 @@ const forecastCell = (v) => (
 const planCols = [
   { key: "material_code", label: "Material", render: (v) => <span className="mono strong">{v}</span> },
   { key: "description", label: "Material Description" },
-  { key: "m1_demand", label: "Demand (M1)", num: true, render: (v) => fmtNum(v) },
-  { key: "safety_stock", label: "Safety Stock", num: true, render: (v) => fmtNum(v) },
-  { key: "current_stock", label: "Current Stock", num: true, render: (v) => fmtNum(v) },
-  { key: "warehouse_stock", label: "Warehouse Stock", num: true, render: (v) => fmtNum(v) },
-  { key: "receipts", label: "Receipts", num: true, render: (v) => fmtNum(v) },
-  { key: "reach_days", label: "Reach (Days)", num: true, render: (v) => v == null ? "—" : fmtNum(v, 1) },
+  { key: "vendor", label: "Vendor" },
+  { key: "m1_demand", label: "Demand (M1)", num: true, render: numCell },
+  { key: "safety_stock", label: "Safety Stock", num: true, render: numCell },
+  { key: "current_stock", label: "Current Stock", num: true, render: numCell },
+  { key: "warehouse_stock", label: "Warehouse Stock", num: true, render: numCell },
+  { key: "receipts", label: "Receipts", num: true, render: numCell },
+  { key: "reach_days", label: "Reach (Days)", num: true, render: (v) => v == null ? "—" : numCell(v) },
   {
     key: "status", label: "Material Status", filterType: "select", options: STATUS_OPTIONS,
     render: (v) => <Badge value={v} />,
   },
-  { key: "open_po", label: "Open PO", num: true, render: (v) => fmtNum(v) },
+  { key: "open_po", label: "Open PO", num: true, render: numCell },
   { key: "m1_forecast", label: "M1 Forecast", num: true, render: forecastCell },
-  { key: "m1_bal", label: "M1 Bal", num: true, render: (v) => fmtNum(v) },
-  { key: "m2_demand", label: "M2 Demand", num: true, render: (v) => fmtNum(v) },
+  { key: "m1_bal", label: "M1 Bal", num: true, render: numCell },
+  { key: "m2_demand", label: "M2 Demand", num: true, render: numCell },
   { key: "m2_forecast", label: "M2 Forecast", num: true, render: forecastCell },
-  { key: "m2_bal", label: "M2 Bal", num: true, render: (v) => fmtNum(v) },
-  { key: "m3_demand", label: "M3 Demand", num: true, render: (v) => fmtNum(v) },
+  { key: "m2_bal", label: "M2 Bal", num: true, render: numCell },
+  { key: "m3_demand", label: "M3 Demand", num: true, render: numCell },
   { key: "m3_forecast", label: "M3 Forecast", num: true, render: forecastCell },
-  { key: "m3_bal", label: "M3 Bal", num: true, render: (v) => fmtNum(v) },
-  { key: "m4_demand", label: "M4 Demand", num: true, render: (v) => fmtNum(v) },
+  { key: "m3_bal", label: "M3 Bal", num: true, render: numCell },
+  { key: "m4_demand", label: "M4 Demand", num: true, render: numCell },
   { key: "m4_forecast", label: "M4 Forecast", num: true, render: forecastCell },
-  { key: "m4_bal", label: "M4 Bal", num: true, render: (v) => fmtNum(v) },
+  { key: "m4_bal", label: "M4 Bal", num: true, render: numCell },
 ];
 
 // Stock (and everything derived from it — status, reach days, receipts, the

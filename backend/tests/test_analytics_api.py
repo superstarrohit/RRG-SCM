@@ -405,6 +405,30 @@ def test_material_planning_receipts_column(client):
     assert rows["M2"]["receipts"] == 5.0
 
 
+def test_material_planning_vendor_column(client):
+    materials = pd.DataFrame({
+        "Material": ["M1", "M2"], "Description": ["Part 1", "Part 2"], "Buyer": ["Alice", "Bob"],
+        "Safety Stock": [0, 0], "Refill Level": [0, 0], "Max Level": [0, 0],
+        "Demand": [0, 0], "Demand 2": [0, 0], "Demand 3": [0, 0], "Demand 4": [0, 0],
+    })
+    assert _upload(client, "materials", materials).status_code == 200
+
+    # M1 is split across two vendors; M2 has a single source.
+    sob = pd.DataFrame({
+        "vendor_code": ["V1", "V2", "V3"],
+        "vendor_name": ["Minor Vendor", "Major Vendor", "Only Vendor"],
+        "material": ["M1", "M1", "M2"],
+        "share": [30, 70, 100],
+    })
+    assert _upload(client, "sob_master", sob).status_code == 200
+
+    r = client.get("/api/analytics/planning")
+    rows = {row["material_code"]: row for row in r.json()["rows"]}
+    # Higher-share vendor listed first.
+    assert rows["M1"]["vendor"] == "Major Vendor, Minor Vendor"
+    assert rows["M2"]["vendor"] == "Only Vendor"
+
+
 def test_incoming_timeseries_pending_until_movements_loaded(client):
     r = client.get("/api/analytics/incoming-timeseries")
     assert r.status_code == 200
