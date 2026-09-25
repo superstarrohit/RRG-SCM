@@ -447,14 +447,19 @@ export function DrillBars({ data, valueFormat = (v) => v, height = 300, color = 
   const bw = Math.min(56, gap - (data.length > 20 ? 8 : 20));
   const ticks = 4;
   const gid = React.useId();
-  const many = data.length > 16;
-  // A value label's pixel width depends on the formatted text, which varies
-  // by chart (currency vs plain counts) — so the number of labels that can
-  // fit without overlapping is computed from the actual longest label rather
-  // than a fixed bar-count cutoff, and thins out as columns get narrower.
+  // A label's pixel width depends on the formatted text, which varies by
+  // chart (currency vs plain counts, short vs full dates) — so how many
+  // labels fit without overlapping is computed from the actual longest
+  // label rather than a fixed bar-count cutoff. This also keeps labels
+  // spaced by actual on-screen distance instead of by index, so a very long
+  // chart (e.g. a full multi-year daily series) still shows a label inside
+  // any scrolled-to window instead of only every Nth bar overall.
   const longestValueLabel = Math.max(...data.map((d) => valueFormat(d.value || 0).length), 1);
   const estValueLabelW = longestValueLabel * 6.4 + 10;
   const valueStep = Math.max(1, Math.ceil(estValueLabelW / gap));
+  const longestDateLabel = Math.max(...data.map((d) => (d.label || "").length), 1);
+  const estDateLabelW = longestDateLabel * 6 + 14;
+  const dateStep = Math.max(1, Math.ceil(estDateLabelW / gap));
   return (
     <div>
     <div className="chart table-wrap" ref={wrapRef}>
@@ -485,8 +490,7 @@ export function DrillBars({ data, valueFormat = (v) => v, height = 300, color = 
           const h = ((d.value || 0) / max) * chartH;
           const x = padL + gap * i + (gap - bw) / 2;
           const y = padT + chartH - h;
-          const step = Math.max(1, Math.ceil(data.length / 16));
-          const showLabel = !many || i % step === 0 || i === data.length - 1;
+          const showLabel = i % dateStep === 0 || i === data.length - 1;
           const showValue = i % valueStep === 0 || i === data.length - 1;
           return (
             <g key={i} onClick={onBar ? () => onBar(d) : undefined}
