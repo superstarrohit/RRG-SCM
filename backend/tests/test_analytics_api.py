@@ -351,6 +351,60 @@ def test_material_planning_report(client):
     assert codes == {"M-SAFE", "M-RISK", "M-EXCESS", "M-OPENPO"}
 
 
+def test_material_planning_stock_date_filter(client):
+    materials = pd.DataFrame({
+        "Material": ["M1"], "Description": ["Part 1"], "Buyer": ["Alice"],
+        "Safety Stock": [10], "Refill Level": [20], "Max Level": [1000],
+        "Demand": [50], "Demand 2": [0], "Demand 3": [0], "Demand 4": [0],
+    })
+    assert _upload(client, "materials", materials).status_code == 200
+
+    snaps = pd.DataFrame({
+        "Material": ["M1", "M1"],
+        "Date": ["2025-06-15", "2025-06-30"],
+        "On Hand": [80, 200],
+        "Inventory Value": [800, 2000],
+    })
+    assert _upload(client, "inventory_snapshots", snaps).status_code == 200
+
+    # No stock_date: the true latest snapshot (30 Jun) wins, as before.
+    r = client.get("/api/analytics/planning")
+    row = {row["material_code"]: row for row in r.json()["rows"]}["M1"]
+    assert row["current_stock"] == 200.0
+
+    # Pinning stock_date to 15 Jun scopes current_stock (and everything
+    # derived from it — reach_days, status, the M1-M4 rollup) to that date.
+    r = client.get("/api/analytics/planning", params={"stock_date": "2025-06-15"})
+    data = r.json()
+    assert data["as_of"] == "2025-06-15"
+    row = {row["material_code"]: row for row in data["rows"]}["M1"]
+    assert row["current_stock"] == 80.0
+    assert row["reach_days"] == 32.0  # 80 / (50 demand / 20 working days)
+
+
+def test_material_planning_receipts_column(client):
+    materials = pd.DataFrame({
+        "Material": ["M1", "M2"], "Description": ["Part 1", "Part 2"], "Buyer": ["Alice", "Bob"],
+        "Safety Stock": [0, 0], "Refill Level": [0, 0], "Max Level": [0, 0],
+        "Demand": [0, 0], "Demand 2": [0, 0], "Demand 3": [0, 0], "Demand 4": [0, 0],
+    })
+    assert _upload(client, "materials", materials).status_code == 200
+    assert _upload(client, "movements", _movements_fixture()).status_code == 200
+
+    r = client.get("/api/analytics/planning", params={"stock_date": "2025-06-30"})
+    rows = {row["material_code"]: row for row in r.json()["rows"]}
+    # M1: GR 10 (15 Jun) - return 2 (20 Jun) = 8; M2: GR 5 (10 Jun) = 5.
+    # The 31 May and 1 Jul rows fall outside June, so they're excluded.
+    assert rows["M1"]["receipts"] == 8.0
+    assert rows["M2"]["receipts"] == 5.0
+
+    # A stock_date earlier in the month only counts receipts up through it.
+    r = client.get("/api/analytics/planning", params={"stock_date": "2025-06-16"})
+    rows = {row["material_code"]: row for row in r.json()["rows"]}
+    assert rows["M1"]["receipts"] == 10.0  # the 20 Jun return hasn't happened yet
+    assert rows["M2"]["receipts"] == 5.0
+
+
 def test_incoming_timeseries_pending_until_movements_loaded(client):
     r = client.get("/api/analytics/incoming-timeseries")
     assert r.status_code == 200

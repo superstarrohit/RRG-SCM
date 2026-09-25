@@ -22,6 +22,7 @@ const planCols = [
   { key: "safety_stock", label: "Safety Stock", num: true, render: (v) => fmtNum(v) },
   { key: "current_stock", label: "Current Stock", num: true, render: (v) => fmtNum(v) },
   { key: "warehouse_stock", label: "Warehouse Stock", num: true, render: (v) => fmtNum(v) },
+  { key: "receipts", label: "Receipts", num: true, render: (v) => fmtNum(v) },
   { key: "reach_days", label: "Reach (Days)", num: true, render: (v) => v == null ? "—" : fmtNum(v, 1) },
   {
     key: "status", label: "Material Status", filterType: "select", options: STATUS_OPTIONS,
@@ -41,9 +42,35 @@ const planCols = [
   { key: "m4_bal", label: "M4 Bal", num: true, render: (v) => fmtNum(v) },
 ];
 
+// Stock (and everything derived from it — status, reach days, receipts, the
+// M1-M4 rollup) is normally as of the latest upload. This page-specific date
+// pins it to an earlier point instead — separate from the global Date Range
+// filter, which scopes *demand history* elsewhere but has no stock of its
+// own to scope here.
+function StockDateFilter({ value, onChange }) {
+  return (
+    <span className="fp-date" style={{ background: "var(--surface)" }}>
+      <span className="fp-date-tag">Stock</span>
+      <input type="date" aria-label="Stock as of" value={value} onChange={(e) => onChange(e.target.value)} />
+      {value && (
+        <button className="fp-combo-clear" title="Use latest stock" aria-label="Use latest stock"
+                onClick={() => onChange("")}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6 6 18M6 6l12 12" />
+          </svg>
+        </button>
+      )}
+    </span>
+  );
+}
+
 export default function Planning() {
   const f = useFilters();
-  const { loading, data, error } = useApi(() => api.planning(f.params), [f.key]);
+  const [stockDate, setStockDate] = React.useState("");
+  const { loading, data, error } = useApi(
+    () => api.planning({ ...f.params, stock_date: stockDate || undefined }),
+    [f.key, stockDate],
+  );
   if (loading) return <Loading />;
   if (error) return <ErrorState error={error} />;
 
@@ -52,6 +79,7 @@ export default function Planning() {
       title="Material Planning (MRP)"
       subtitle="Current stock vs safety / refill / max levels, and a rolling M1–M4 net-requirement (Forecast) and projected-balance (Bal) outlook."
       asOf={data.as_of}
+      right={<StockDateFilter value={stockDate} onChange={setStockDate} />}
     />
   );
   if (data.empty) return <div>{head}<EmptyState message={data.message} /></div>;

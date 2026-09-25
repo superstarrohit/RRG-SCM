@@ -216,27 +216,31 @@ def stock_by_material(stock: pd.DataFrame, warehouse_stock: pd.DataFrame, locati
     return s.groupby("material_code")["qty_on_hand"].sum().to_dict()
 
 
-def latest_open_pos(db: Session) -> pd.DataFrame:
-    """Load the *current* state of every open PO line.
+def latest_open_pos(db: Session, as_of: str | None = None) -> pd.DataFrame:
+    """Load the state of every open PO line as of a given date (the true
+    latest snapshot per line when ``as_of`` is None).
 
     The ``open_pos`` dump is uploaded as one row per PO line *per day* it was
     open (up to ~400k rows) — open_qty depletes over the line's life until
     fully received. Materializing that whole table into pandas on every
     request (the generic ``load_df`` path) took 15s+ per call, so this filters
-    to the latest ``snapshot_date`` per (po, item) in SQL instead, via a
-    ROW_NUMBER() window, and only pulls that much smaller result set into
-    Python. Columns are renamed to the internal names every analytics module
-    already expects (po_number, po_line, material_code, order_qty,
-    received_qty, unit_price, order_date, expected_date, supplier_name,
-    currency), so nothing downstream needs to know about the raw upload's own
-    column names.
+    to the latest ``snapshot_date`` (at or before ``as_of``, if given) per
+    (po, item) in SQL instead, via a ROW_NUMBER() window, and only pulls that
+    much smaller result set into Python. Columns are renamed to the internal
+    names every analytics module already expects (po_number, po_line,
+    material_code, order_qty, received_qty, unit_price, order_date,
+    expected_date, supplier_name, currency), so nothing downstream needs to
+    know about the raw upload's own column names.
     """
+    base = select(PurchaseOrder)
+    if as_of:
+        base = base.where(PurchaseOrder.snapshot_date <= as_of)
     rn = (
         func.row_number()
         .over(partition_by=(PurchaseOrder.po, PurchaseOrder.item), order_by=PurchaseOrder.snapshot_date.desc())
         .label("rn")
     )
-    sub = select(PurchaseOrder, rn).subquery()
+    sub = base.add_columns(rn).subquery()
     rows = db.execute(select(sub).where(sub.c.rn == 1)).all()
     cols = [c.name for c in PurchaseOrder.__table__.columns]
     if not rows:
@@ -256,14 +260,19 @@ def latest_open_pos(db: Session) -> pd.DataFrame:
     return df
 
 
-def latest_warehouse_stock(db: Session) -> pd.DataFrame:
-    """Load the *current* on-hand per plant × storage location × material.
+def latest_warehouse_stock(db: Session, as_of: str | None = None) -> pd.DataFrame:
+    """Load the on-hand per plant × storage location × material as of a given
+    date (the true latest ``stock_date`` per combination when ``as_of`` is None).
 
     The warehouse-stock dump is a daily history (~360k rows). This collapses
-    it to the latest ``stock_date`` per (plant, storage_location, material)
-    in SQL, then renames to the internal names the on-hand calculations use
-    (material_code, warehouse_code, qty), keeping storage_location and value.
+    it to the latest ``stock_date`` (at or before ``as_of``, if given) per
+    (plant, storage_location, material) in SQL, then renames to the internal
+    names the on-hand calculations use (material_code, warehouse_code, qty),
+    keeping storage_location and value.
     """
+    base = select(WarehouseStock)
+    if as_of:
+        base = base.where(WarehouseStock.stock_date <= as_of)
     rn = (
         func.row_number()
         .over(
@@ -272,7 +281,7 @@ def latest_warehouse_stock(db: Session) -> pd.DataFrame:
         )
         .label("rn")
     )
-    sub = select(WarehouseStock, rn).subquery()
+    sub = base.add_columns(rn).subquery()
     rows = db.execute(select(sub).where(sub.c.rn == 1)).all()
     cols = [c.name for c in WarehouseStock.__table__.columns]
     if not rows:
@@ -283,12 +292,16 @@ def latest_warehouse_stock(db: Session) -> pd.DataFrame:
     })
 
 
-def latest_inventory_stock(db: Session) -> pd.DataFrame:
-    """Load the latest on-hand qty + value per material from the daily
-    inventory-snapshot history — the same "today" stock the Dashboard's
-    inventory-value KPI is built from. Collapses to the most recent
-    ``snapshot_date`` per (material_code, location).
+def latest_inventory_stock(db: Session, as_of: str | None = None) -> pd.DataFrame:
+    """Load the on-hand qty + value per material as of a given date, from the
+    daily inventory-snapshot history — the same "today" stock the Dashboard's
+    inventory-value KPI is built from when ``as_of`` is None. Collapses to
+    the most recent ``snapshot_date`` (at or before ``as_of``, if given) per
+    (material_code, location).
     """
+    base = select(InventorySnapshot)
+    if as_of:
+        base = base.where(InventorySnapshot.snapshot_date <= as_of)
     rn = (
         func.row_number()
         .over(
@@ -297,7 +310,7 @@ def latest_inventory_stock(db: Session) -> pd.DataFrame:
         )
         .label("rn")
     )
-    sub = select(InventorySnapshot, rn).subquery()
+    sub = base.add_columns(rn).subquery()
     rows = db.execute(select(sub).where(sub.c.rn == 1)).all()
     cols = [c.name for c in InventorySnapshot.__table__.columns]
     if not rows:

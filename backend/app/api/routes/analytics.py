@@ -106,10 +106,11 @@ def get_incoming(
 @router.get("/planning")
 def get_planning(
     as_of: str | None = Query(None),
+    stock_date: str | None = Query(None),
     f: dict = Depends(_slicers),
     db: Session = Depends(get_db),
 ) -> dict:
-    return material_planning.analyze(db, as_of=_as_of(as_of), **f)
+    return material_planning.analyze(db, as_of=_as_of(as_of), stock_date=stock_date, **f)
 
 
 @router.get("/sourcing")
