@@ -190,6 +190,24 @@ function DescriptionSearch({ f }) {
   );
 }
 
+// A labelled date input with an explicit calendar button — opening the
+// picker shouldn't depend on a browser/OS rendering its own tiny
+// calendar-icon affordance inside the native input, which varies a lot
+// (and is easy to miss) across browsers.
+function DateField({ label, value, onChange, ariaLabel }) {
+  const inputRef = React.useRef(null);
+  return (
+    <span className="fp-date">
+      <span className="fp-date-tag">{label}</span>
+      <input ref={inputRef} type="date" value={value} onChange={(e) => onChange(e.target.value)} aria-label={ariaLabel} />
+      <button type="button" className="fp-date-cal" title="Pick a date" aria-label={`Open calendar for ${ariaLabel}`}
+              onClick={() => inputRef.current?.showPicker?.()}>
+        <Icon name="calendar" size={14} />
+      </button>
+    </span>
+  );
+}
+
 // The global slicer panel — a persistent right-hand rail on desktop
 // (collapsible to a slim icon rail), a slide-over drawer (behind a floating
 // toggle) on narrow screens.
@@ -272,14 +290,8 @@ export function FiltersPanel() {
         <div className="fp-field">
           <span className="fp-label">Date Range</span>
           <div className="fp-date-col">
-            <span className="fp-date">
-              <span className="fp-date-tag">From</span>
-              <input type="date" value={f.start} onChange={(e) => f.setStart(e.target.value)} aria-label="From date" />
-            </span>
-            <span className="fp-date">
-              <span className="fp-date-tag">To</span>
-              <input type="date" value={f.end} onChange={(e) => f.setEnd(e.target.value)} aria-label="To date" />
-            </span>
+            <DateField label="From" value={f.start} onChange={f.setStart} ariaLabel="From date" />
+            <DateField label="To" value={f.end} onChange={f.setEnd} ariaLabel="To date" />
           </div>
         </div>
 

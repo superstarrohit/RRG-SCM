@@ -5,6 +5,7 @@ import {
   Loading, ErrorState, EmptyState, useApi, fmtNum,
 } from "../components/ui.jsx";
 import { useFilters } from "../components/filters.jsx";
+import Icon from "../components/icons.jsx";
 
 const STATUS_OPTIONS = ["Stockout", "Risk", "Alarm", "Safe", "Excess"];
 
@@ -57,10 +58,15 @@ const planCols = [
 // filter, which scopes *demand history* elsewhere but has no stock of its
 // own to scope here.
 function StockDateFilter({ value, onChange }) {
+  const inputRef = React.useRef(null);
   return (
     <span className="fp-date" style={{ background: "var(--surface)" }}>
       <span className="fp-date-tag">Stock</span>
-      <input type="date" aria-label="Stock as of" value={value} onChange={(e) => onChange(e.target.value)} />
+      <input ref={inputRef} type="date" aria-label="Stock as of" value={value} onChange={(e) => onChange(e.target.value)} />
+      <button type="button" className="fp-date-cal" title="Pick a date" aria-label="Open calendar"
+              onClick={() => inputRef.current?.showPicker?.()}>
+        <Icon name="calendar" size={14} />
+      </button>
       {value && (
         <button className="fp-combo-clear" title="Use latest stock" aria-label="Use latest stock"
                 onClick={() => onChange("")}>

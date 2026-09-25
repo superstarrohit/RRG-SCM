@@ -365,6 +365,20 @@ a { color: inherit; text-decoration: none; }
   padding: 0; outline: none; width: 100%; min-width: 0; color-scheme: dark;
 }
 :root[data-theme="light"] .fp-date input { color-scheme: light; }
+/* Hidden in favor of the explicit .fp-date-cal button below — a browser's
+   own icon here is inconsistent (visible in Chromium, absent or styled
+   differently elsewhere), and showing both looked redundant where it does
+   render. */
+.fp-date input::-webkit-calendar-picker-indicator { display: none; -webkit-appearance: none; }
+/* An explicit calendar button, so opening the date picker doesn't depend on
+   a browser/OS rendering its own calendar-icon affordance inside the native
+   input (inconsistent across browsers, and easy to miss when it's this
+   small) — clicking it calls showPicker() directly. */
+.fp-date-cal {
+  display: inline-grid; place-items: center; flex-shrink: 0; width: 18px; height: 18px;
+  border: none; background: none; color: var(--muted); cursor: pointer; padding: 0;
+}
+.fp-date-cal:hover { color: var(--text); }
 
 .fp-clear { justify-content: center; width: 100%; }
 .fp-chips { display: flex; flex-direction: column; gap: 7px; }
