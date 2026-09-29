@@ -1,287 +1,383 @@
-"""Generate coherent sample SCM data, write it to sample_data/, and load it.
+"""Generate a coherent sample SCM dataset and load it straight into the app
+database, matching the *current* schema (see app/ingestion/dump_types.py).
 
 Run from the backend directory:
 
-    python -m scripts.seed            # generate CSVs + load into the app DB
-    python -m scripts.seed --files    # only write the sample CSV files
-    python -m scripts.seed --load     # only load existing sample CSVs into DB
+    python -m scripts.seed
 
-Dates are generated relative to today so the incoming/overdue analysis is
-meaningful in the demo.
+Dates are generated relative to today, so the incoming/overdue/trend analysis
+stays meaningful whenever this is run (including the Docker image's
+first-run seeding, on whatever day that happens to be).
 """
 from __future__ import annotations
 
-import argparse
+import random
 import sys
 from datetime import date, timedelta
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+from sqlalchemy import insert
 
-# Make "app" importable when run as a script.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.database import SessionLocal, init_db  # noqa: E402
-from app.ingestion import load_dataframe  # noqa: E402
+from app.database import SessionLocal, engine, init_db  # noqa: E402
+from app.models import (  # noqa: E402
+    BOMLine,
+    InventorySnapshot,
+    LocationMaster,
+    Material,
+    Movement,
+    MovementMaster,
+    PurchaseOrder,
+    SOBMaster,
+    WarehouseStock,
+)
 
-SAMPLE_DIR = Path(__file__).resolve().parent.parent / "sample_data"
+random.seed(42)
+np.random.seed(42)
+
 TODAY = date.today()
+N_MATERIALS = 300
+
+COMMODITIES = [
+    "Bars", "Bearings", "Belts", "Brackets", "Consumables", "Couplings",
+    "Engine Parts", "Fasteners", "Filters", "Flanges", "Gaskets", "Gears",
+    "Hoses", "Instruments", "Joints", "Pump Parts", "Seals", "Sheets",
+    "Tubing", "Valves",
+]
+
+BUYERS = [
+    "Amit Sharma", "Arun Reddy", "Deepa Menon", "Kavya Iyer", "Priya Nair",
+    "Rajesh Kumar", "Sneha Patel", "Vikram Singh",
+]
+
+PART_NAMES = {
+    "Bars": ["Steel Bar", "Aluminium Bar", "Brass Rod"],
+    "Bearings": ["Ball Bearing", "Roller Bearing", "Thrust Bearing"],
+    "Belts": ["Drive Belt", "Timing Belt", "V-Belt"],
+    "Brackets": ["Mounting Bracket", "Support Bracket", "L-Bracket"],
+    "Consumables": ["Welding Rod", "Cutting Oil", "Abrasive Disc"],
+    "Couplings": ["Flexible Coupling", "Rigid Coupling", "Jaw Coupling"],
+    "Engine Parts": ["Piston Ring Set", "Cylinder Liner", "Crankshaft"],
+    "Fasteners": ["Hex Bolt", "Lock Nut", "Washer Set"],
+    "Filters": ["Oil Filter", "Air Filter", "Fuel Filter"],
+    "Flanges": ["Weld Flange", "Slip-On Flange", "Blind Flange"],
+    "Gaskets": ["Head Gasket", "Flange Gasket", "O-Ring Set"],
+    "Gears": ["Spur Gear", "Bevel Gear", "Worm Gear"],
+    "Hoses": ["Hydraulic Hose", "Coolant Hose", "Air Hose"],
+    "Instruments": ["Pressure Gauge", "Temperature Sensor", "Flow Meter"],
+    "Joints": ["Universal Joint", "Ball Joint", "Expansion Joint"],
+    "Pump Parts": ["Pump Impeller", "Pump Casing", "Pump Shaft"],
+    "Seals": ["Oil Seal", "Mechanical Seal", "Lip Seal"],
+    "Sheets": ["Steel Sheet", "Aluminium Sheet", "Rubber Sheet"],
+    "Tubing": ["Copper Tubing", "PVC Tubing", "Steel Tubing"],
+    "Valves": ["Ball Valve", "Gate Valve", "Check Valve"],
+}
+
+VENDOR_PREFIXES = [
+    "Indo", "Malabar", "Zenith", "Orion", "Everest", "Bharat", "Deccan",
+    "Konkan", "Vindhya", "Nilgiri", "Coromandel", "Ganga", "Himal",
+    "Sahyadri", "Narmada", "Godavari", "Krishna", "Cauvery", "Satpura",
+    "Aravalli",
+]
+VENDOR_TYPES = [
+    "Precision Forgings Co", "Metal Traders LLP", "Fasteners Industries",
+    "Engineering Works", "Industrial Supplies", "Auto Components Ltd",
+    "Alloys Pvt Ltd", "Tooling Co", "Bearings Pvt Ltd", "Hydraulics Pvt Ltd",
+]
+
+MOVEMENT_TYPES = [
+    ("101", "Goods Receipt from PO"),
+    ("261", "Issue to Production"),
+    ("301", "Plant to Plant Transfer"),
+    ("311", "Storage Location Transfer"),
+    ("501", "Return to Vendor"),
+    ("551", "Scrap"),
+    ("601", "Delivery to Customer"),
+    ("641", "Stock Transport Order"),
+    ("701", "Physical Inventory Gain"),
+    ("702", "Physical Inventory Loss"),
+]
+# Receipts and production issues dominate real movement traffic; returns,
+# scrap and inventory adjustments are comparatively rare. Keeping "Goods
+# Receipt" reliably ahead of "Return to Vendor" matters because the
+# dashboard's "Incoming Receipts (this month)" KPI nets GR minus returns.
+MOVEMENT_WEIGHTS = [30, 30, 8, 8, 3, 5, 10, 3, 2, 1]
+
+LOCATIONS = [
+    ("1000", "Main Raw Material Store"),
+    ("1001", "WIP Store"),
+    ("1002", "Finished Goods Store"),
+    ("1003", "Quality Hold Area"),
+    ("2000", "Plant B Store"),
+    ("2001", "Overflow Warehouse"),
+    ("2002", "Returns Store"),
+    ("2003", "Scrap Yard"),
+]
+PLANT = "PL01"
 
 
-def d(offset_days: int) -> str:
-    return (TODAY + timedelta(days=offset_days)).isoformat()
+def vendor_pool(n: int) -> list[tuple[str, str]]:
+    """n distinct (vendor_code, vendor_name) pairs."""
+    names = set()
+    out = []
+    while len(out) < n:
+        name = f"{random.choice(VENDOR_PREFIXES)} {random.choice(VENDOR_TYPES)}"
+        if name in names:
+            continue
+        names.add(name)
+        out.append((f"V{1000 + len(out)}", name))
+    return out
 
 
-def month_offset(months: int) -> str:
-    """First-of-month date `months` from the current month (months<=0 = past)."""
-    y, m = TODAY.year, TODAY.month + months
-    y += (m - 1) // 12
-    m = (m - 1) % 12 + 1
-    return date(y, m, 1).isoformat()
+def build_materials() -> pd.DataFrame:
+    rows = []
+    for i in range(N_MATERIALS):
+        commodity = COMMODITIES[i % len(COMMODITIES)]
+        part = random.choice(PART_NAMES[commodity])
+        abbr = "".join(w[0] for w in part.split())[:3].upper()
+        code = f"RM-{1001 + i}"
+        avg_monthly = round(random.uniform(200, 4000), 1)
+        demand_hist = [round(avg_monthly * random.uniform(0.7, 1.3), 1) for _ in range(12)]
+        unit_cost = round(random.uniform(0.5, 60.0), 2)
+        lead_time = random.choice([7, 10, 14, 21, 28, 35, 45])
+        safety_stock = round(avg_monthly * random.uniform(0.15, 0.4), 1)
+        refill = round(safety_stock * random.uniform(1.6, 2.2), 1)
+        maxl = round(refill * random.uniform(1.8, 2.6), 1)
+        rows.append({
+            "commodity": commodity,
+            "buyer": random.choice(BUYERS),
+            "rm_material_code": code,
+            "rough": code.replace("RM", "RG"),
+            "material_description": f"RRG_{part} {abbr}-{random.randint(10,99)}",
+            **{f"m{j+1}": demand_hist[j] for j in range(12)},
+            "average": round(sum(demand_hist) / 12, 1),
+            "map": unit_cost,
+            "abc": random.choices([1, 2, 3], weights=[0.2, 0.3, 0.5])[0],
+            "xyz": random.choices([1, 2, 3], weights=[0.4, 0.35, 0.25])[0],
+            "abcxyz": 1,
+            "no_of_deliveries": random.randint(4, 60),
+            "leadtime": lead_time,
+            "transit_time": random.randint(1, 7),
+            "total_leadtime": lead_time + random.randint(1, 7),
+            "max_leadtime": lead_time * 1.3,
+            "sku": i + 1,
+            "supplier": "",  # actual sourcing lives in sob_master
+            "last_month_opening": round(avg_monthly * random.uniform(0.8, 1.5), 1),
+            "demand": demand_hist[-1],
+            "demand_2": demand_hist[-2],
+            "demand_3": demand_hist[-3],
+            "demand_4": demand_hist[-4],
+            "safety_stock": safety_stock,
+            "refill_level": refill,
+            "max_level": maxl,
+        })
+    return pd.DataFrame(rows)
 
 
-def build_frames() -> dict[str, pd.DataFrame]:
-    materials = pd.DataFrame(
-        [
-            # code, desc, category, uom, cost, lt, ss, rop, moq, abc
-            ("RM-1001", "Steel Sheet 2mm", "Raw Material", "KG", 3.20, 21, 500, 800, 1000, "A"),
-            ("RM-1002", "Aluminium Bar", "Raw Material", "KG", 5.10, 28, 300, 500, 500, "A"),
-            ("RM-1003", "Copper Wire", "Raw Material", "M", 1.75, 14, 1000, 1500, 2000, "B"),
-            ("RM-1004", "Plastic Granule", "Raw Material", "KG", 0.95, 10, 800, 1200, 1000, "C"),
-            ("CP-2001", "Bearing 6203", "Component", "EA", 2.40, 30, 200, 400, 500, "B"),
-            ("CP-2002", "Fastener M6", "Component", "EA", 0.05, 7, 5000, 8000, 10000, "C"),
-            ("CP-2003", "Control Board", "Component", "EA", 18.50, 45, 50, 120, 100, "A"),
-            ("CP-2004", "Gasket Set", "Component", "EA", 1.20, 21, 300, 500, 500, "C"),
-            ("SA-3001", "Motor Assembly", "Sub-Assembly", "EA", 42.00, 14, 20, 40, 25, "A"),
-            ("FG-5001", "Pump Unit A", "Finished Good", "EA", 0.0, 0, 10, 20, 10, "A"),
-            ("FG-5002", "Pump Unit B", "Finished Good", "EA", 0.0, 0, 5, 15, 10, "A"),
-            ("PK-4001", "Carton Box", "Packaging", "EA", 0.30, 7, 2000, 3000, 5000, "C"),
-        ],
-        columns=["material_code", "description", "category", "uom", "unit_cost",
-                 "lead_time_days", "safety_stock", "reorder_point", "min_order_qty", "abc_class"],
-    )
-    # Enrich material master with the reference-report dimensions.
-    commodity_map = {
-        "Raw Material": "Metals & Polymers", "Component": "Electro-Mechanical",
-        "Sub-Assembly": "Assemblies", "Finished Good": "Finished Goods", "Packaging": "Packaging",
-    }
-    buyers = ["A. Khan", "L. Meyer", "S. Rao", "T. Costa"]
-    materials["commodity"] = materials["category"].map(commodity_map).fillna("General")
-    materials["buyer"] = [buyers[i % len(buyers)] for i in range(len(materials))]
-    materials["refill_level"] = materials["reorder_point"]
-    materials["max_level"] = (materials["safety_stock"] * 4).round()
-
-    suppliers = pd.DataFrame(
-        [
-            ("SUP-001", "Apex Metals Ltd", "USA", 21, 88),
-            ("SUP-002", "Global Components Co", "Germany", 30, 76),
-            ("SUP-003", "Eastern Polymers", "India", 14, 92),
-            ("SUP-004", "Precision Parts Inc", "Japan", 45, 81),
-        ],
-        columns=["supplier_code", "name", "country", "lead_time_days", "rating"],
-    )
-
-    stock = pd.DataFrame(
-        [
-            ("RM-1001", 620, 0), ("RM-1002", 210, 20), ("RM-1003", 1450, 0),
-            ("RM-1004", 300, 0), ("CP-2001", 180, 10), ("CP-2002", 12000, 0),
-            ("CP-2003", 35, 0), ("CP-2004", 260, 0), ("SA-3001", 8, 0),
-            ("FG-5001", 14, 0), ("FG-5002", 6, 0), ("PK-4001", 4200, 0),
-        ],
-        columns=["material_code", "qty_on_hand", "qty_blocked"],
-    )
-    stock["as_of_date"] = d(0)
-
-    warehouse_stock = pd.DataFrame(
-        [
-            ("WH-NORTH", "RM-1001", "A-01", 400), ("WH-SOUTH", "RM-1001", "B-12", 220),
-            ("WH-NORTH", "CP-2003", "C-04", 35), ("WH-NORTH", "FG-5001", "D-01", 14),
-            ("WH-SOUTH", "FG-5002", "D-08", 6), ("WH-NORTH", "CP-2001", "C-11", 120),
-            ("WH-SOUTH", "CP-2001", "B-03", 60),
-        ],
-        columns=["warehouse_code", "material_code", "location", "qty"],
-    )
-    warehouse_stock["as_of_date"] = d(0)
-
-    # Open POs — mix of overdue, this-week, this-month, future. Uses friendly
-    # headers to exercise the column-alias mapping.
-    open_pos = pd.DataFrame(
-        [
-            ("PO-9001", "10", "RM-1001", "SUP-001", 2000, 0, 2000, 3.10, d(-12)),
-            ("PO-9002", "10", "RM-1002", "SUP-001", 800, 300, 500, 5.00, d(-5)),
-            ("PO-9003", "10", "CP-2003", "SUP-002", 150, 0, 150, 18.20, d(-2)),
-            ("PO-9004", "10", "CP-2001", "SUP-004", 500, 0, 500, 2.35, d(3)),
-            ("PO-9005", "20", "RM-1003", "SUP-003", 2500, 500, 2000, 1.70, d(6)),
-            ("PO-9006", "10", "CP-2002", "SUP-002", 10000, 0, 10000, 0.048, d(9)),
-            ("PO-9007", "10", "RM-1004", "SUP-003", 1500, 0, 1500, 0.92, d(15)),
-            ("PO-9008", "10", "SA-3001", "SUP-004", 30, 0, 30, 41.00, d(20)),
-            ("PO-9009", "10", "CP-2003", "SUP-002", 120, 0, 120, 18.60, d(28)),
-            ("PO-9010", "10", "RM-1001", "SUP-001", 3000, 0, 3000, 3.05, d(40)),
-            ("PO-9011", "10", "CP-2004", "SUP-004", 500, 0, 500, 1.15, d(45)),
-            ("PO-9012", "10", "PK-4001", "SUP-003", 5000, 0, 5000, 0.29, d(2)),
-            ("PO-9013", "20", "RM-1002", "SUP-004", 600, 0, 600, 5.25, d(-8)),
-            ("PO-9014", "10", "CP-2001", "SUP-002", 400, 0, 400, 2.50, d(35)),
-        ],
-        columns=["PO No", "Line", "Material", "Vendor", "Order Qty", "Received",
-                 "Open Qty", "Unit Price", "ETA"],
-    )
-
-    receipts = pd.DataFrame(
-        [
-            ("GRN-5001", "PO-9002", "RM-1002", "SUP-001", 300, 5.00, d(-10)),
-            ("GRN-5002", "PO-9005", "RM-1003", "SUP-003", 500, 1.70, d(-7)),
-            ("GRN-4990", "PO-8990", "CP-2001", "SUP-004", 500, 2.30, d(-40)),
-            ("GRN-4991", "PO-8991", "CP-2001", "SUP-002", 400, 2.55, d(-38)),
-            ("GRN-4992", "PO-8992", "RM-1001", "SUP-001", 2000, 3.15, d(-25)),
-            ("GRN-4993", "PO-8993", "CP-2003", "SUP-002", 100, 18.40, d(-20)),
-        ],
-        columns=["GRN No", "PO", "Material", "Vendor", "Received", "Price", "Date"],
-    )
-
-    demand = pd.DataFrame(
-        [
-            ("RM-1001", d(30), 2500, "forecast"), ("RM-1002", d(30), 900, "forecast"),
-            ("RM-1003", d(30), 1800, "forecast"), ("CP-2003", d(30), 200, "forecast"),
-            ("CP-2001", d(30), 700, "forecast"), ("FG-5001", d(30), 40, "so"),
-            ("FG-5002", d(30), 25, "so"), ("SA-3001", d(30), 35, "prod"),
-        ],
-        columns=["material_code", "period", "qty", "demand_type"],
-    )
-
-    bom = pd.DataFrame(
-        [
-            # product, fg_material, description, rm_material, rm_description, qty
-            ("Pump Assembly", "FG-5001", "Pump Unit A", "SA-3001", "Motor Assembly", 1),
-            ("Pump Assembly", "FG-5001", "Pump Unit A", "CP-2004", "Gasket Set", 2),
-            ("Pump Assembly", "FG-5001", "Pump Unit A", "PK-4001", "Carton Box", 1),
-            ("Pump Assembly", "FG-5001", "Pump Unit A", "CP-2002", "Fastener M6", 12),
-            ("Pump Assembly", "FG-5002", "Pump Unit B", "SA-3001", "Motor Assembly", 1),
-            ("Pump Assembly", "FG-5002", "Pump Unit B", "CP-2003", "Control Board", 1),
-            ("Pump Assembly", "FG-5002", "Pump Unit B", "CP-2004", "Gasket Set", 3),
-            ("Pump Assembly", "FG-5002", "Pump Unit B", "PK-4001", "Carton Box", 1),
-            # SA-3001 = Motor Assembly (sub-assembly -> raw)
-            ("Motor Assembly", "SA-3001", "Motor Assembly", "RM-1002", "Aluminium Bar", 0.8),
-            ("Motor Assembly", "SA-3001", "Motor Assembly", "CP-2001", "Bearing 6203", 2),
-            ("Motor Assembly", "SA-3001", "Motor Assembly", "RM-1003", "Copper Wire", 5),
-        ],
-        columns=["product", "fg_material", "description", "rm_material", "rm_description", "qty"],
-    )
-
-    production_plan = pd.DataFrame(
-        [
-            ("FG-5001", d(30), 50),
-            ("FG-5002", d(30), 30),
-            ("FG-5001", d(60), 40),
-        ],
-        columns=["material_code", "period", "planned_qty"],
+def build_location_master() -> pd.DataFrame:
+    return pd.DataFrame(
+        [{"storage_location": c, "location": n} for c, n in LOCATIONS]
     )
 
-    # --- Inventory history (8 monthly snapshots, per material x location) ---
-    import math
-    stock_now = dict(zip(stock["material_code"], stock["qty_on_hand"]))
-    cost_map = dict(zip(materials["material_code"], materials["unit_cost"]))
-    loc_map = {"WH-NORTH": 0.6, "WH-SOUTH": 0.4}
-    inv_rows = []
-    for m in materials["material_code"]:
-        base_qty = float(stock_now.get(m, 100)) or 100.0
-        cost = float(cost_map.get(m, 1.0))
-        for i, off in enumerate(range(-7, 1)):  # 8 months ending this month
-            # gentle wave so trends are visible
-            factor = 0.75 + 0.35 * (i / 7.0) + 0.08 * math.sin(i)
-            for loc, share in loc_map.items():
-                qty = round(base_qty * factor * share, 1)
-                inv_rows.append((m, loc, month_offset(off), qty, round(qty * cost, 2)))
-    inventory_snapshots = pd.DataFrame(
-        inv_rows, columns=["material_code", "location", "snapshot_date", "qty", "value"])
 
-    # --- Movements (recent goods movements) ---
-    mv = [
-        ("RM-1001", "GRN", "Goods receipt", 2000, 6300, d(-25)),
-        ("RM-1002", "GRN", "Goods receipt", 300, 1500, d(-10)),
-        ("RM-1001", "Issue", "Production issue", -1500, -4725, d(-8)),
-        ("CP-2003", "GRN", "Goods receipt", 100, 1840, d(-20)),
-        ("CP-2001", "Issue", "Production issue", -400, -960, d(-6)),
-        ("RM-1003", "GRN", "Goods receipt", 500, 850, d(-7)),
-        ("SA-3001", "Transfer", "Warehouse transfer", 20, 840, d(-4)),
-        ("RM-1004", "Adjustment", "Cycle count adj.", -30, -28, d(-3)),
-        ("CP-2002", "Issue", "Production issue", -3000, -144, d(-2)),
-        ("PK-4001", "GRN", "Goods receipt", 5000, 1500, d(-1)),
-    ]
-    movements = pd.DataFrame(
-        mv, columns=["material_code", "mvt_type", "description", "qty", "value", "movement_date"])
-
-    # --- Forecast (rolling M1/M2/M3 per material) ---
-    fc = [
-        ("RM-1001", 2600, 2800, 2500), ("RM-1002", 950, 1000, 900),
-        ("RM-1003", 1900, 2000, 1850), ("RM-1004", 700, 750, 720),
-        ("CP-2001", 720, 760, 700), ("CP-2002", 9000, 9500, 9000),
-        ("CP-2003", 210, 230, 200), ("CP-2004", 480, 500, 460),
-        ("SA-3001", 36, 40, 34), ("FG-5001", 42, 48, 40),
-        ("FG-5002", 26, 30, 24), ("PK-4001", 5200, 5400, 5000),
-    ]
-    forecast = pd.DataFrame(fc, columns=["material_code", "m1_qty", "m2_qty", "m3_qty"])
-
-    return {
-        "materials": materials,
-        "suppliers": suppliers,
-        "stock": stock,
-        "warehouse_stock": warehouse_stock,
-        "open_pos": open_pos,
-        "receipts": receipts,
-        "demand": demand,
-        "forecast": forecast,
-        "inventory_snapshots": inventory_snapshots,
-        "movements": movements,
-        "bom": bom,
-        "production_plan": production_plan,
-    }
+def build_movement_master() -> pd.DataFrame:
+    return pd.DataFrame(
+        [{"mvt": c, "description": n} for c, n in MOVEMENT_TYPES]
+    )
 
 
-def write_files(frames: dict[str, pd.DataFrame]) -> None:
-    SAMPLE_DIR.mkdir(parents=True, exist_ok=True)
-    for name, df in frames.items():
-        path = SAMPLE_DIR / f"{name}.csv"
-        df.to_csv(path, index=False)
-        print(f"  wrote {path.relative_to(SAMPLE_DIR.parent)}  ({len(df)} rows)")
+def build_sob_master(materials: pd.DataFrame, vendors: list[tuple[str, str]]) -> pd.DataFrame:
+    rows = []
+    for _, m in materials.iterrows():
+        n_vendors = random.choice([1, 1, 2, 2, 3])
+        shares = np.random.dirichlet(np.ones(n_vendors)) * 100
+        picked = random.sample(vendors, n_vendors)
+        for (vcode, vname), share in zip(picked, shares):
+            rows.append({
+                "vendor_code": vcode,
+                "vendor": vname.split()[0],
+                "vendor_name": vname,
+                "share": round(float(share), 1),
+                "material": m["rm_material_code"],
+                "mat": m["commodity"],
+                "description": m["material_description"],
+            })
+    return pd.DataFrame(rows)
 
 
-def load(frames: dict[str, pd.DataFrame]) -> None:
-    init_db()
-    db = SessionLocal()
-    try:
-        for name, df in frames.items():
-            report = load_dataframe(
-                db, df, name, source_type="file",
-                source_name=f"sample_data/{name}.csv", mode="replace",
-            )
-            print(f"  loaded {name:16s} -> {report['rows_ingested']} rows "
-                  f"[{report['status']}]")
-    finally:
-        db.close()
+def build_bom(materials: pd.DataFrame) -> pd.DataFrame:
+    fg_products = [f"FG-{2001 + i}" for i in range(20)]
+    fg_names = [f"{n} Assembly" for n in [
+        "Engine", "Gearbox", "Chassis", "Suspension", "Braking System",
+        "Steering Unit", "Cooling Module", "Fuel System", "Exhaust Unit",
+        "Drive Axle", "Hydraulic Pack", "Electrical Harness", "Cabin Frame",
+        "Transmission", "Differential", "Radiator Pack", "Clutch Assembly",
+        "Turbo Unit", "Pump Station", "Control Panel",
+    ]]
+    rows = []
+    codes = materials["rm_material_code"].tolist()
+    descs = dict(zip(materials["rm_material_code"], materials["material_description"]))
+    for fg, name in zip(fg_products, fg_names):
+        comps = random.sample(codes, random.randint(4, 8))
+        for rm in comps:
+            rows.append({
+                "product": name,
+                "fg_material": fg,
+                "description": name,
+                "rm_material": rm,
+                "rm_description": descs[rm],
+                "qty": round(random.uniform(1, 10), 1),
+            })
+    return pd.DataFrame(rows)
 
 
-def load_from_files() -> None:
-    frames = {p.stem: pd.read_csv(p) for p in sorted(SAMPLE_DIR.glob("*.csv"))}
-    load(frames)
+def build_open_pos(materials: pd.DataFrame, vendors: list[tuple[str, str]]) -> pd.DataFrame:
+    rows = []
+    codes = materials["rm_material_code"].tolist()
+    descs = dict(zip(materials["rm_material_code"], materials["material_description"]))
+    for i in range(700):
+        material = random.choice(codes)
+        vcode, vname = random.choice(vendors)
+        po_qty = round(random.uniform(50, 2000), 0)
+        received_frac = random.choice([0, 0, 0.2, 0.5, 0.7])
+        open_qty = round(po_qty * (1 - received_frac), 0)
+        po_date = TODAY - timedelta(days=random.randint(1, 45))
+        lead = random.choice([7, 10, 14, 21, 28, 35])
+        delivery_date = po_date + timedelta(days=lead)
+        rows.append({
+            "snapshot_date": TODAY,
+            "po": f"45{100000 + i}",
+            "name": vname,
+            "material": material,
+            "description": descs[material],
+            "po_qty": po_qty,
+            "po_value": round(po_qty * random.uniform(0.5, 60.0), 2),
+            "delivery_date": delivery_date,
+            "item": "10",
+            "po_date": po_date,
+            "open_qty": open_qty,
+            "net_price": round(random.uniform(0.5, 60.0), 2),
+            "supplier_code": vcode,
+            "shipping": random.choice(["Road", "Rail", "Air", "Sea"]),
+            "tax": "GST18",
+            "created_by": random.choice(BUYERS),
+        })
+    return pd.DataFrame(rows)
+
+
+def build_inventory_snapshots(materials: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    codes = materials["rm_material_code"].tolist()
+    costs = dict(zip(materials["rm_material_code"], materials["map"]))
+    base_qty = {c: random.uniform(2000, 40000) for c in codes}
+
+    # Weekly history for the full ~2-year range, then daily for the last 60 days.
+    weekly_dates = [TODAY - timedelta(days=d) for d in range(0, 730, 7)]
+    daily_dates = [TODAY - timedelta(days=d) for d in range(0, 60)]
+    all_dates = sorted(set(weekly_dates) | set(daily_dates))
+
+    for d in all_dates:
+        for c in codes:
+            drift = 1 + 0.15 * np.sin((TODAY - d).days / 45.0 + hash(c) % 10)
+            noise = random.uniform(0.9, 1.1)
+            qty = max(0.0, base_qty[c] * drift * noise)
+            rows.append({
+                "material_code": c,
+                "location": "Main Warehouse",
+                "snapshot_date": d,
+                "qty": round(qty, 1),
+                "value": round(qty * costs[c], 2),
+            })
+    return pd.DataFrame(rows)
+
+
+def build_warehouse_stock(materials: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    codes = materials["rm_material_code"].tolist()
+    costs = dict(zip(materials["rm_material_code"], materials["map"]))
+    for d_off in range(0, 30):
+        d = TODAY - timedelta(days=d_off)
+        for loc, _ in LOCATIONS[:4]:
+            for c in codes:
+                qty = max(0.0, random.uniform(0, 8000))
+                rows.append({
+                    "stock_date": d,
+                    "plant": PLANT,
+                    "storage_location": loc,
+                    "material": c,
+                    "stock": round(qty, 1),
+                    "value": round(qty * costs[c], 2),
+                })
+    return pd.DataFrame(rows)
+
+
+def build_movements(materials: pd.DataFrame) -> pd.DataFrame:
+    rows = []
+    codes = materials["rm_material_code"].tolist()
+    descs = dict(zip(materials["rm_material_code"], materials["material_description"]))
+    costs = dict(zip(materials["rm_material_code"], materials["map"]))
+    for d_off in range(0, 180):
+        d = TODAY - timedelta(days=d_off)
+        for _ in range(random.randint(10, 25)):
+            c = random.choice(codes)
+            mvt, mvt_type = random.choices(MOVEMENT_TYPES, weights=MOVEMENT_WEIGHTS)[0]
+            qty = round(random.uniform(10, 500), 1)
+            rows.append({
+                "movement_date": d,
+                "material_code": c,
+                "description": descs[c],
+                "mvt": mvt,
+                "mvt_type": mvt_type,
+                "qty": qty,
+                "value": round(qty * costs[c], 2),
+                "from_location": random.choice(LOCATIONS)[0],
+                "to_location": random.choice(LOCATIONS)[0],
+                "document_no": f"DOC{d_off:04d}{random.randint(1000,9999)}",
+            })
+    return pd.DataFrame(rows)
+
+
+def bulk_load(model, df: pd.DataFrame) -> None:
+    if df.empty:
+        return
+    records = df.replace({np.nan: None}).to_dict(orient="records")
+    with engine.begin() as conn:
+        conn.execute(insert(model.__table__), records)
+    print(f"  loaded {model.__tablename__:<20} -> {len(records)} rows")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Seed RRG-SCM sample data.")
-    parser.add_argument("--files", action="store_true", help="only write CSV files")
-    parser.add_argument("--load", action="store_true", help="only load existing CSVs")
-    args = parser.parse_args()
+    init_db()
 
-    if args.load:
-        print("Loading sample CSVs into the app database...")
-        load_from_files()
-        return
+    print("Generating sample data...")
+    materials = build_materials()
+    vendors = vendor_pool(30)
 
-    frames = build_frames()
-    print("Writing sample CSV files...")
-    write_files(frames)
-    if not args.files:
-        print("Loading sample data into the app database...")
-        load(frames)
+    print("Loading into the app database...")
+    session = SessionLocal()
+    try:
+        for model in (
+            Material, LocationMaster, MovementMaster, SOBMaster,
+            BOMLine, PurchaseOrder, InventorySnapshot, WarehouseStock, Movement,
+        ):
+            session.execute(model.__table__.delete())
+        session.commit()
+    finally:
+        session.close()
+
+    bulk_load(Material, materials)
+    bulk_load(LocationMaster, build_location_master())
+    bulk_load(MovementMaster, build_movement_master())
+    bulk_load(SOBMaster, build_sob_master(materials, vendors))
+    bulk_load(BOMLine, build_bom(materials))
+    bulk_load(PurchaseOrder, build_open_pos(materials, vendors))
+    bulk_load(InventorySnapshot, build_inventory_snapshots(materials))
+    bulk_load(WarehouseStock, build_warehouse_stock(materials))
+    bulk_load(Movement, build_movements(materials))
+
     print("Done.")
 
 

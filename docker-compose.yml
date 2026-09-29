@@ -1,0 +1,12 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - rrg_data:/app/data
+      - rrg_uploads:/app/uploads
+
+volumes:
+  rrg_data:
+  rrg_uploads:

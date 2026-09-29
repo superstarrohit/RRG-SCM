@@ -77,6 +77,20 @@ npm run dev                         # http://localhost:5173
 The Vite dev server proxies `/api` to the backend on `:8000`, so just open
 <http://localhost:5173>.
 
+### Or: run it portably with Docker
+
+No Python/Node setup at all — just [Docker](https://docs.docker.com/get-docker/):
+
+```bash
+docker compose up --build
+```
+
+Open <http://localhost:8000>. The image builds the React frontend and the
+FastAPI backend into one container; on first run it seeds a fresh sample
+database automatically (a few seconds), then keeps it in a named volume
+across restarts. `docker compose down -v` wipes that volume for a clean
+re-seed.
+
 ---
 
 ## Data ingestion
